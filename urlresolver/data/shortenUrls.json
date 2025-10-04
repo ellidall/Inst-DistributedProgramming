@@ -1,0 +1,7 @@
+{
+  "paths": {
+    "/go": "https://golang.org",
+    "/http": "https://pkg.go.dev/net/http",
+    "/gopher": "https://blog.golang.org/gopher"
+  }
+}
