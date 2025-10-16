@@ -3,17 +3,18 @@ package orderservice
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
 func TestGetOrder(t *testing.T) {
 	id := "123"
 	some := "test"
 	status := "ok"
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/order/%s?some=%s", id, some), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/order/%s?some=%s", id, some), http.NoBody)
 	w := httptest.NewRecorder()
 
 	router := mux.NewRouter()

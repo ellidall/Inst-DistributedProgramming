@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -14,25 +15,36 @@ import (
 
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
-	file, err := os.OpenFile("my.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile("my.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err == nil {
 		log.SetOutput(file)
-		defer file.Close()
+	} else {
+		log.Warnf("Failed to open log file: %v", err)
 	}
 
 	serverPort := ":8000"
 	killSignalChan := getKillSignalChannel()
-	srv := startServer(serverPort)
 	waitForKillSignal(killSignalChan)
+
+	srv := startServer(serverPort)
+
 	err = srv.Shutdown(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		if file != nil {
+			file.Close()
+		}
+		os.Exit(1)
 	}
 }
 
 func startServer(serverPort string) *http.Server {
 	router := server.Router()
-	srv := &http.Server{Addr: serverPort, Handler: router}
+	srv := &http.Server{
+		Addr:              serverPort,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	go func() {
 		log.Fatal(srv.ListenAndServe())
 	}()
