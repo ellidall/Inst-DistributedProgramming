@@ -13,12 +13,14 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const fallbackURL = "https://www.google.com/"
+
 func runServer(cfg *Config) error {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
-	}).Methods("GET")
+	}).Methods(http.MethodGet)
 
 	router.HandleFunc("/{shortPath}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -28,8 +30,8 @@ func runServer(cfg *Config) error {
 			http.Redirect(w, r, longURL, http.StatusFound)
 			return
 		}
-		http.NotFound(w, r)
-	}).Methods("GET")
+		http.Redirect(w, r, fallbackURL, http.StatusFound)
+	}).Methods(http.MethodGet)
 
 	server := &http.Server{
 		Addr:              cfg.ServeAddr,
