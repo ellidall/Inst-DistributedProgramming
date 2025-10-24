@@ -7,7 +7,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"orderservise/pkg/hello"
-	"orderservise/pkg/kitty"
 	"orderservise/pkg/orderservice"
 )
 
@@ -15,7 +14,7 @@ func Router() http.Handler {
 	r := mux.NewRouter()
 	s := r.PathPrefix("/api/v1").Subrouter()
 	s.HandleFunc("/hello-world", hello.GetHelloWorld).Methods(http.MethodGet)
-	s.HandleFunc("/cat", kitty.GetKitty).Methods(http.MethodGet)
+	s.HandleFunc("/cat", hello.GetKitty).Methods(http.MethodGet)
 	s.HandleFunc("/order/{ID}", orderservice.GetOrder).Methods(http.MethodGet)
 	return logMiddleware(r)
 }

@@ -15,7 +15,7 @@ import (
 
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
-	file, err := os.OpenFile("my.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	file, err := os.OpenFile("log/my.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err == nil {
 		log.SetOutput(file)
 	} else {
@@ -23,10 +23,10 @@ func main() {
 	}
 
 	serverPort := ":8000"
+	srv := startServer(serverPort)
+
 	killSignalChan := getKillSignalChannel()
 	waitForKillSignal(killSignalChan)
-
-	srv := startServer(serverPort)
 
 	err = srv.Shutdown(context.Background())
 	if err != nil {
