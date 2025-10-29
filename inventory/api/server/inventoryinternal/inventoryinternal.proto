@@ -1,0 +1,13 @@
+syntax = "proto3";
+package Inventory;
+
+option go_package = "/.;inventoryinternal";
+
+service InventoryInternalService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string message = 1;
+}
