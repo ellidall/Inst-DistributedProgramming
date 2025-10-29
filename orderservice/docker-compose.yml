@@ -1,0 +1,38 @@
+version: '3.3'
+
+services:
+  orderservice:
+    image: orderservice
+    container_name: orderservice
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081" # GRPC API port
+    environment:
+      ORDERSERVICE_DB_HOST: orderservice-db
+      ORDERSERVICE_DB_PORT: 3306
+      ORDERSERVICE_DB_NAME: orderservice
+      ORDERSERVICE_DB_USER: orderservice
+      ORDERSERVICE_DB_PASSWORD: ${DB_PASSWORD}
+      ORDERSERVICE_DB_MAX_CONN: 5
+    depends_on:
+      - orderservice-db
+    restart: unless-stopped
+
+  orderservice-db:
+    image: percona:8.0
+    container_name: orderservice-db
+    environment:
+      MYSQL_DATABASE: orderservice
+      MYSQL_USER: orderservice
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - orderservice-db-data:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  orderservice-db-data:

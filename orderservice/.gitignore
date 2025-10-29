@@ -4,4 +4,4 @@
 bin/orderservice
 !bin/
 
-/log/
+.env

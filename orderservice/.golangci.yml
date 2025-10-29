@@ -39,7 +39,7 @@ linters-settings:
   govet:
     check-shadowing: true
   goimports:
-    local-prefixes: orderservise
+    local-prefixes: bff
   gocritic:
     disabled-checks:
       - sloppyReassign

@@ -1,0 +1,13 @@
+syntax = "proto3";
+package OrderService;
+
+option go_package = "/.;orderserviceinternal";
+
+service OrderServiceInternalService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string message = 1;
+}
