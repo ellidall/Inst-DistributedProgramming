@@ -1,16 +1,24 @@
 package main
 
-import "github.com/jmoiron/sqlx"
+import (
+	"github.com/jmoiron/sqlx"
+
+	appservice "orderservice/pkg/app/service"
+)
 
 func newDependencyContainer(
 	_ *config,
 	connContainer *connectionsContainer,
 ) (*dependencyContainer, error) {
+	orderService := appservice.NewOrderService()
+
 	return &dependencyContainer{
-		db: connContainer.db,
+		DB:           connContainer.db,
+		OrderService: orderService,
 	}, nil
 }
 
 type dependencyContainer struct {
-	db *sqlx.DB
+	DB           *sqlx.DB
+	OrderService appservice.OrderService
 }

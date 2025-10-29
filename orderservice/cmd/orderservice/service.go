@@ -43,11 +43,13 @@ func startGRPCServer(
 	ctx context.Context,
 	config *config,
 	logger *log.Logger,
-	_ *dependencyContainer,
+	dependencyContainer *dependencyContainer,
 ) error {
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(makeGrpcUnaryInterceptor(logger)))
 
-	api.RegisterOrderServiceInternalServiceServer(grpcServer, transport.NewInternalAPI())
+	api.RegisterOrderServiceInternalServiceServer(grpcServer, transport.NewInternalAPI(
+		dependencyContainer.OrderService,
+	))
 
 	listener, err := net.Listen("tcp", config.ServeGRPCAddress)
 	if err != nil {
