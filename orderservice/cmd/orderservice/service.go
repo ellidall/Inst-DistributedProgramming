@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	api "orderservice/api/server/orderserviceinternal"
-	"orderservice/pkg/infrastructure/transport"
+	"orderservice/pkg/orderservice/infrastructure/transport"
 )
 
 const shutdownTimeout = 30 * time.Second
@@ -43,13 +43,11 @@ func startGRPCServer(
 	ctx context.Context,
 	config *config,
 	logger *log.Logger,
-	dependencyContainer *dependencyContainer,
+	_ *dependencyContainer,
 ) error {
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(makeGrpcUnaryInterceptor(logger)))
 
-	api.RegisterOrderServiceInternalServiceServer(grpcServer, transport.NewInternalAPI(
-		dependencyContainer.OrderService,
-	))
+	api.RegisterOrderServiceInternalServiceServer(grpcServer, transport.NewInternalAPI())
 
 	listener, err := net.Listen("tcp", config.ServeGRPCAddress)
 	if err != nil {

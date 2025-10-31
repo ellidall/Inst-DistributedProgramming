@@ -4,14 +4,10 @@ package OrderService;
 option go_package = "/.;orderserviceinternal";
 
 service OrderServiceInternalService {
-  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
 }
 
-message CreateOrderRequest {
-  int64 productId = 1;
-  int32 count = 2;
-}
-
-message CreateOrderResponse {
-  int64 orderId = 1;
+message PingRequest {}
+message PingResponse {
+  string message = 1;
 }
