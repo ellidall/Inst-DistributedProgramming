@@ -114,7 +114,7 @@ func TestCreateOrder_RepoError(t *testing.T) {
 	_, err := svc.CreateOrder(customerID)
 	assert.Error(t, err)
 	orderRepo.AssertExpectations(t)
-	eventDisp.AssertExpectations(t) // Dispatch не вызван
+	eventDisp.AssertExpectations(t)
 }
 
 func TestCreateOrder_EventDispatchError(t *testing.T) {
@@ -131,12 +131,10 @@ func TestCreateOrder_EventDispatchError(t *testing.T) {
 	svc := NewOrderService(orderRepo, nil, eventDisp)
 
 	_, err := svc.CreateOrder(customerID)
-	assert.Error(t, err) // Даже если Store успешен, ошибка в событии — это ошибка операции
+	assert.Error(t, err)
 	orderRepo.AssertExpectations(t)
 	eventDisp.AssertExpectations(t)
 }
-
-// --- RemoveOrder ---
 
 func TestRemoveOrder_Success(t *testing.T) {
 	orderRepo := new(MockOrderRepository)
@@ -173,9 +171,8 @@ func TestRemoveOrder_NotFound_Idempotent(t *testing.T) {
 	svc := NewOrderService(orderRepo, nil, eventDisp)
 
 	err := svc.RemoveOrder(orderID)
-	assert.NoError(t, err) // Идемпотентно
+	assert.NoError(t, err)
 	orderRepo.AssertExpectations(t)
-	// Dispatch не вызывается
 }
 
 func TestRemoveOrder_FindError(t *testing.T) {
@@ -190,8 +187,6 @@ func TestRemoveOrder_FindError(t *testing.T) {
 	err := svc.RemoveOrder(orderID)
 	assert.Error(t, err)
 }
-
-// --- SetStatus ---
 
 func TestSetStatus_ValidTransition_OpenToPending(t *testing.T) {
 	orderRepo := new(MockOrderRepository)
@@ -237,7 +232,6 @@ func TestSetStatus_InvalidTransition_PaidToOpen(t *testing.T) {
 	err := svc.SetStatus(orderID, model.Open)
 	assert.ErrorIs(t, err, ErrInvalidOrderStatus)
 	orderRepo.AssertExpectations(t)
-	// Store и Dispatch не вызываются
 }
 
 func TestSetStatus_OrderNotFound(t *testing.T) {
@@ -252,8 +246,6 @@ func TestSetStatus_OrderNotFound(t *testing.T) {
 	err := svc.SetStatus(orderID, model.Cancelled)
 	assert.ErrorIs(t, err, model.ErrOrderNotFound)
 }
-
-// --- AddItem ---
 
 func TestAddItem_Success(t *testing.T) {
 	orderRepo := new(MockOrderRepository)
@@ -317,8 +309,6 @@ func TestAddItem_OrderNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, model.ErrOrderNotFound)
 }
 
-// --- RemoveItem ---
-
 func TestRemoveItem_Success(t *testing.T) {
 	orderRepo := new(MockOrderRepository)
 	eventDisp := new(MockEventDispatcher)
@@ -366,19 +356,12 @@ func TestRemoveItem_ItemNotFound_Idempotent(t *testing.T) {
 	}
 
 	orderRepo.On("Find", orderID).Return(order, nil)
-	// Store НЕ должен быть вызван, потому что изменений нет
-	// Но в текущей реализации он вызывается — это можно улучшить, но пока тестируем как есть
-
-	// Однако: в текущей логике, если элемент не найден — мы всё равно делаем Store?
-	// Нет: в коде выше — если !found → return nil без Store.
-	// Так что Store не вызывается.
 
 	svc := NewOrderService(orderRepo, nil, eventDisp)
 
 	err := svc.RemoveItem(orderID, nonExistentItem)
 	assert.NoError(t, err)
 	orderRepo.AssertExpectations(t)
-	// Dispatch не вызывается
 }
 
 func TestRemoveItem_OrderNotOpen(t *testing.T) {
@@ -397,8 +380,6 @@ func TestRemoveItem_OrderNotOpen(t *testing.T) {
 	err := svc.RemoveItem(orderID, itemID)
 	assert.ErrorIs(t, err, ErrInvalidOrderStatus)
 }
-
-// --- Status Transition Matrix ---
 
 func TestIsValidStatusTransition_Matrix(t *testing.T) {
 	svc := &orderService{}
