@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"fmt"
+
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
@@ -20,6 +22,8 @@ func NewWorker(
 ) worker.Worker {
 	w := worker.New(temporalClient, temporal.TaskQueue, worker.Options{})
 	w.RegisterActivity(activity.NewWalletServiceActivities(walletService))
+	fmt.Println("Registering CreateWalletWorkflow...")
 	w.RegisterWorkflow(workflows.CreateWalletWorkflow)
+	fmt.Println("Registered CreateWalletWorkflow")
 	return w
 }

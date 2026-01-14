@@ -2,18 +2,16 @@ package data
 
 import "github.com/google/uuid"
 
-type UserStatus int
-
-const (
-	Blocked UserStatus = iota
-	Active
-	Deleted
-)
-
 type User struct {
 	UserID   uuid.UUID
-	Status   UserStatus
+	Status   int
 	Login    string
+	Email    *string
+	Telegram *string
+}
+
+type UserUpdate struct {
+	Status   *int
 	Email    *string
 	Telegram *string
 }

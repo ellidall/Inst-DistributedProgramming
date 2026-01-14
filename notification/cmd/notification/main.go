@@ -12,7 +12,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const appID = "payment"
+const appID = "notification"
 
 func main() {
 	logger := logging.NewJSONLogger(&logging.Config{AppName: appID})

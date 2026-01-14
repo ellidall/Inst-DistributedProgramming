@@ -41,45 +41,27 @@ type userService struct {
 func (s *userService) CreateUser(ctx context.Context, user appdata.User) (uuid.UUID, error) {
 	var lockNames []string
 	lockNames = append(lockNames, userLoginLock(user.Login))
-	if user.Email != nil {
+	if user.Email != nil && *user.Email != "" {
 		lockNames = append(lockNames, userEmailLock(*user.Email))
 	}
-	if user.Telegram != nil {
+	if user.Telegram != nil && *user.Telegram != "" {
 		lockNames = append(lockNames, userTelegramLock(*user.Telegram))
 	}
 
 	var userID uuid.UUID
 	err := s.luow.Execute(ctx, lockNames, func(provider RepositoryProvider) error {
+		// Преобразуем статус: если 0 — считаем Blocked, иначе Active (или как у вас)
+		status := model.Blocked
+		if user.Status != 0 {
+			status = model.UserStatus(user.Status)
+		}
+
 		domainService := s.domainService(ctx, provider.UserRepository(ctx))
-		uID, err := domainService.CreateUser(user.Login)
+		uID, err := domainService.CreateUser(user.Login, user.Email, user.Telegram, status)
 		if err != nil {
 			return err
 		}
 		userID = uID
-
-		// Собираем все обновления в одну структуру
-		updateParams := struct {
-			Status   *model.UserStatus
-			Email    *string
-			Telegram *string
-		}{}
-
-		if user.Email != nil {
-			updateParams.Email = user.Email
-		}
-		if user.Telegram != nil {
-			updateParams.Telegram = user.Telegram
-		}
-		if user.Status != 0 { // 0 = Blocked (default)
-			status := model.UserStatus(user.Status)
-			updateParams.Status = &status
-		}
-
-		// Выполняем единое обновление
-		if updateParams.Status != nil || updateParams.Email != nil || updateParams.Telegram != nil {
-			return domainService.UpdateUser(userID, updateParams)
-		}
-
 		return nil
 	})
 	return userID, err

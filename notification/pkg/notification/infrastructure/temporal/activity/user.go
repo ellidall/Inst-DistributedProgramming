@@ -21,10 +21,10 @@ func (a *UserActivities) FindUser(ctx context.Context, userID uuid.UUID) (appdat
 	return a.userService.FindUser(ctx, userID)
 }
 
-func (a *UserActivities) SetUserStatus(ctx context.Context, userID uuid.UUID, status int) error {
-	return a.userService.SetUserStatus(ctx, userID, status)
+func (a *UserActivities) UpdateUser(ctx context.Context, userID uuid.UUID, update appdata.UserUpdate) error {
+	return a.userService.UpdateUser(ctx, userID, update)
 }
 
-func (a *UserActivities) StoreUser(ctx context.Context, user appdata.User) (uuid.UUID, error) {
-	return a.userService.StoreUser(ctx, user)
+func (a *UserActivities) CreateUser(ctx context.Context, user appdata.User) error {
+	return a.userService.CreateUser(ctx, user)
 }

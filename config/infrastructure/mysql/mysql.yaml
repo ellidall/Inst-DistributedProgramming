@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      initContainers:
+        - name: mysql-init
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              shopt -s nullglob
+
+              /usr/local/bin/docker-entrypoint.sh mysqld --skip-networking=0 --bind-address=127.0.0.1 &
+              pid=$!
+
+              ready=0
+              for _ in {1..60}; do
+                if mysqladmin ping -uroot -p"$MYSQL_ROOT_PASSWORD" --protocol=TCP --host=127.0.0.1 >/dev/null 2>&1; then
+                  ready=1
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ "$ready" -ne 1 ]; then
+                echo "MySQL did not become ready in time." >&2
+                exit 1
+              fi
+
+              for secret_dir in /secrets/*; do
+                db_name="$(cat "$secret_dir/DB_NAME")"
+                db_user="$(cat "$secret_dir/DB_USER")"
+                db_password="$(cat "$secret_dir/DB_PASSWORD")"
+
+                mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --protocol=TCP --host=127.0.0.1 <<SQL
+              CREATE DATABASE IF NOT EXISTS \`${db_name}\`;
+              CREATE USER IF NOT EXISTS '${db_user}'@'%' IDENTIFIED BY '${db_password}';
+              GRANT ALL PRIVILEGES ON \`${db_name}\`.* TO '${db_user}'@'%';
+              FLUSH PRIVILEGES;
+              SQL
+              done
+
+              mysqladmin -uroot -p"$MYSQL_ROOT_PASSWORD" --protocol=TCP --host=127.0.0.1 shutdown
+              wait "$pid"
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+            - name: mysql-user-service
+              mountPath: /secrets/user-secret
+              readOnly: true
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-data
+          hostPath:
+            path: /data/mysql
+            type: DirectoryOrCreate
+        - name: mysql-user-service
+          secret:
+            secretName: mysql-user-service

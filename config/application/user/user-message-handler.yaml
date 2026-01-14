@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-message-handler
+  labels:
+    app: user-message-handler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: user-message-handler
+  template:
+    metadata:
+      name: user-message-handler
+      labels:
+        app: user-message-handler
+    spec:
+      initContainers:
+        - name: user-migrator
+          image: user:latest
+          imagePullPolicy: Never
+          command:
+            - migrate
+          env:
+            - name: USER_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: USER_DATABASE_NAME
+              value: userservice_db
+            - name: USER_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: user-database-access
+                  key: USER_DATABASE_USER
+            - name: USER_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: user-database-access
+                  key: USER_DATABASE_PASSWORD
+      containers:
+        - name: user-message-handler
+          image: user:latest
+          livenessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          readinessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          imagePullPolicy: Never
+          command:
+            - message-handler
+          env:
+            - name: USER_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: USER_DATABASE_NAME
+              value: userservice_db
+            - name: USER_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: user-database-access
+                  key: USER_DATABASE_USER
+            - name: USER_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: user-database-access
+                  key: USER_DATABASE_PASSWORD
+            - name: USER_AMQP_HOST
+              value: rabbitmq.infrastructure.svc.cluster.local:15672
+            - name: USER_AMQP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rmq-secret
+                  key: rabbitmq-username
+            - name: USER_AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rmq-secret
+                  key: rabbitmq-password
+          ports:
+            - containerPort: 8081
+              protocol: TCP
+              name: grpc
+            - containerPort: 8082
+              protocol: TCP
+              name: http
+      restartPolicy: Always
+      

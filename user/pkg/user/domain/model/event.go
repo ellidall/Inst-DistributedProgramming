@@ -1,8 +1,6 @@
 package model
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 )
 
@@ -12,7 +10,7 @@ type UserCreated struct {
 	Login     string     `json:"login"`
 	Email     *string    `json:"email,omitempty"`
 	Telegram  *string    `json:"telegram,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	CreatedAt int64      `json:"created_at"`
 }
 
 func (u UserCreated) Type() string {

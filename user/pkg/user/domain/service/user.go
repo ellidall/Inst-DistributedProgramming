@@ -19,7 +19,12 @@ type UpdateUserParams struct {
 }
 
 type UserService interface {
-	CreateUser(login string) (uuid.UUID, error)
+	CreateUser(
+		login string,
+		email *string,
+		telegram *string,
+		status model.UserStatus,
+	) (uuid.UUID, error)
 	UpdateUser(userID uuid.UUID, params UpdateUserParams) error
 	DeleteUser(userID uuid.UUID, hard bool) error
 }
@@ -39,15 +44,41 @@ type userService struct {
 	eventDispatcher domain.EventDispatcher
 }
 
-func (u userService) CreateUser(login string) (uuid.UUID, error) {
-	_, err := u.userRepository.Find(model.FindSpec{
-		Login: &login,
-	})
-	if err != nil && !errors.Is(err, model.ErrUserNotFound) {
-		return uuid.Nil, err
-	}
+func (u userService) CreateUser(
+	login string,
+	email *string,
+	telegram *string,
+	status model.UserStatus,
+) (uuid.UUID, error) {
+	// Проверка уникальности login
+	_, err := u.userRepository.Find(model.FindSpec{Login: &login})
 	if err == nil {
 		return uuid.Nil, model.ErrUserLoginAlreadyUsed
+	}
+	if !errors.Is(err, model.ErrUserNotFound) {
+		return uuid.Nil, err
+	}
+
+	// Проверка уникальности email
+	if email != nil && *email != "" {
+		_, err := u.userRepository.Find(model.FindSpec{Email: email})
+		if err == nil {
+			return uuid.Nil, model.ErrUserEmailAlreadyUsed
+		}
+		if !errors.Is(err, model.ErrUserNotFound) {
+			return uuid.Nil, err
+		}
+	}
+
+	// Проверка уникальности telegram
+	if telegram != nil && *telegram != "" {
+		_, err := u.userRepository.Find(model.FindSpec{Telegram: telegram})
+		if err == nil {
+			return uuid.Nil, model.ErrUserTelegramAlreadyUsed
+		}
+		if !errors.Is(err, model.ErrUserNotFound) {
+			return uuid.Nil, err
+		}
 	}
 
 	userID, err := u.userRepository.NextID()
@@ -55,15 +86,18 @@ func (u userService) CreateUser(login string) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 
-	status := model.Active
 	currentTime := time.Now()
-	err = u.userRepository.Store(model.User{
+	user := model.User{
 		UserID:    userID,
 		Status:    status,
 		Login:     login,
+		Email:     email,
+		Telegram:  telegram,
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
-	})
+	}
+
+	err = u.userRepository.Store(user)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -72,7 +106,9 @@ func (u userService) CreateUser(login string) (uuid.UUID, error) {
 		UserID:    userID,
 		Status:    status,
 		Login:     login,
-		CreatedAt: currentTime,
+		Email:     email,
+		Telegram:  telegram,
+		CreatedAt: currentTime.UnixMilli(),
 	})
 }
 

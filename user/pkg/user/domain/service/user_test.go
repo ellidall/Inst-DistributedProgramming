@@ -52,15 +52,94 @@ func TestCreateUser_Success(t *testing.T) {
 	dispatcher := new(MockEventDispatcher)
 
 	login := "testuser"
+	email := "test@example.com"
+	telegram := "@test"
+	status := model.Active
 	userID := uuid.New()
 
-	repo.On("Find", mock.Anything).Return(nil, model.ErrUserNotFound)
-	repo.On("NextID").Return(userID, nil)
-	repo.On("Store", mock.Anything).Return(nil)
-	dispatcher.On("Dispatch", mock.AnythingOfType("*model.UserCreated")).Return(nil)
+	// Проверка уникальности login, email, telegram — все возвращают ErrUserNotFound
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Login != nil && *spec.Login == login
+	})).Return(nil, model.ErrUserNotFound).Once()
+
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Email != nil && *spec.Email == email
+	})).Return(nil, model.ErrUserNotFound).Once()
+
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Telegram != nil && *spec.Telegram == telegram
+	})).Return(nil, model.ErrUserNotFound).Once()
+
+	repo.On("NextID").Return(userID, nil).Once()
+
+	// Проверяем, что Store вызывается с правильными данными
+	repo.On("Store", mock.MatchedBy(func(u model.User) bool {
+		return u.UserID == userID &&
+			u.Login == login &&
+			u.Email != nil && *u.Email == email &&
+			u.Telegram != nil && *u.Telegram == telegram &&
+			u.Status == status &&
+			!u.CreatedAt.IsZero() && !u.UpdatedAt.IsZero()
+	})).Return(nil).Once()
+
+	// Проверяем событие
+	dispatcher.On("Dispatch", mock.MatchedBy(func(e domain.Event) bool {
+		created, ok := e.(*model.UserCreated)
+		return ok &&
+			created.UserID == userID &&
+			created.Login == login &&
+			created.Email != nil && *created.Email == email &&
+			created.Telegram != nil && *created.Telegram == telegram &&
+			created.Status == status
+	})).Return(nil).Once()
 
 	svc := NewUserService(repo, dispatcher)
-	id, err := svc.CreateUser(login)
+	id, err := svc.CreateUser(login, &email, &telegram, status)
+
+	assert.NoError(t, err)
+	assert.Equal(t, userID, id)
+	repo.AssertExpectations(t)
+	dispatcher.AssertExpectations(t)
+}
+
+func TestCreateUser_WithNilFields(t *testing.T) {
+	repo := new(MockUserRepository)
+	dispatcher := new(MockEventDispatcher)
+
+	login := "testuser"
+	var email *string
+	var telegram *string
+	status := model.Blocked
+	userID := uuid.New()
+
+	// Только проверка login
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Login != nil && *spec.Login == login
+	})).Return(nil, model.ErrUserNotFound).Once()
+
+	// Email и Telegram не проверяются, так как nil
+	repo.On("NextID").Return(userID, nil).Once()
+
+	repo.On("Store", mock.MatchedBy(func(u model.User) bool {
+		return u.UserID == userID &&
+			u.Login == login &&
+			u.Email == nil &&
+			u.Telegram == nil &&
+			u.Status == status
+	})).Return(nil).Once()
+
+	dispatcher.On("Dispatch", mock.MatchedBy(func(e domain.Event) bool {
+		created, ok := e.(*model.UserCreated)
+		return ok &&
+			created.UserID == userID &&
+			created.Login == login &&
+			created.Email == nil &&
+			created.Telegram == nil &&
+			created.Status == status
+	})).Return(nil).Once()
+
+	svc := NewUserService(repo, dispatcher)
+	id, err := svc.CreateUser(login, email, telegram, status)
 
 	assert.NoError(t, err)
 	assert.Equal(t, userID, id)
@@ -73,15 +152,72 @@ func TestCreateUser_LoginExists(t *testing.T) {
 	dispatcher := new(MockEventDispatcher)
 
 	login := "existinguser"
+	email := "new@example.com"
 	existingUser := &model.User{Login: login}
 
-	repo.On("Find", mock.Anything).Return(existingUser, nil)
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Login != nil && *spec.Login == login
+	})).Return(existingUser, nil).Once()
 
 	svc := NewUserService(repo, dispatcher)
-	_, err := svc.CreateUser(login)
+	_, err := svc.CreateUser(login, &email, nil, model.Active)
 
 	assert.ErrorIs(t, err, model.ErrUserLoginAlreadyUsed)
 	repo.AssertExpectations(t)
+	// Dispatcher не должен быть вызван
+	dispatcher.AssertNotCalled(t, "Dispatch")
+}
+
+func TestCreateUser_EmailExists(t *testing.T) {
+	repo := new(MockUserRepository)
+	dispatcher := new(MockEventDispatcher)
+
+	login := "newuser"
+	email := "existing@example.com"
+	existingUser := &model.User{Email: &email}
+
+	// Login свободен
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Login != nil && *spec.Login == login
+	})).Return(nil, model.ErrUserNotFound).Once()
+
+	// Email занят
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Email != nil && *spec.Email == email
+	})).Return(existingUser, nil).Once()
+
+	svc := NewUserService(repo, dispatcher)
+	_, err := svc.CreateUser(login, &email, nil, model.Active)
+
+	assert.ErrorIs(t, err, model.ErrUserEmailAlreadyUsed)
+	repo.AssertExpectations(t)
+	dispatcher.AssertNotCalled(t, "Dispatch")
+}
+
+func TestCreateUser_TelegramExists(t *testing.T) {
+	repo := new(MockUserRepository)
+	dispatcher := new(MockEventDispatcher)
+
+	login := "newuser"
+	telegram := "@existing"
+	existingUser := &model.User{Telegram: &telegram}
+
+	// Login свободен
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Login != nil && *spec.Login == login
+	})).Return(nil, model.ErrUserNotFound).Once()
+
+	// Telegram занят
+	repo.On("Find", mock.MatchedBy(func(spec model.FindSpec) bool {
+		return spec.Telegram != nil && *spec.Telegram == telegram
+	})).Return(existingUser, nil).Once()
+
+	svc := NewUserService(repo, dispatcher)
+	_, err := svc.CreateUser(login, nil, &telegram, model.Active)
+
+	assert.ErrorIs(t, err, model.ErrUserTelegramAlreadyUsed)
+	repo.AssertExpectations(t)
+	dispatcher.AssertNotCalled(t, "Dispatch")
 }
 
 func TestUpdateUser_Success(t *testing.T) {

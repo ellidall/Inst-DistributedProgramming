@@ -2,7 +2,7 @@ package service
 
 import (
 	"errors"
-	"reflect"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,11 +11,23 @@ import (
 	"notification/pkg/notification/domain/model"
 )
 
+const email = "email"
+
+type UpdateUserParams struct {
+	Status   *model.UserStatus
+	Email    *string
+	Telegram *string
+}
+
 type UserService interface {
-	CreateUser(login string) (uuid.UUID, error)
-	UpdateUserStatus(userID uuid.UUID, status model.UserStatus) error
-	UpdateUserEmail(userID uuid.UUID, email *string) error
-	UpdateUserTelegram(userID uuid.UUID, telegram *string) error
+	CreateUser(
+		userID uuid.UUID,
+		login string,
+		email *string,
+		telegram *string,
+		status model.UserStatus,
+	) error
+	UpdateUser(userID uuid.UUID, params UpdateUserParams) error
 	DeleteUser(userID uuid.UUID, hard bool) error
 }
 
@@ -34,186 +46,191 @@ type userService struct {
 	eventDispatcher domain.EventDispatcher
 }
 
-func (u userService) CreateUser(login string) (uuid.UUID, error) {
-	_, err := u.userRepository.Find(model.FindSpec{
-		Login: &login,
-	})
-	if err != nil && !errors.Is(err, model.ErrUserNotFound) {
-		return uuid.Nil, err
-	}
+func (u userService) CreateUser(
+	userID uuid.UUID,
+	login string,
+	email *string,
+	telegram *string,
+	status model.UserStatus,
+) error {
+	fmt.Println("CreateUser")
+	// Проверка уникальности login
+	_, err := u.userRepository.Find(model.FindSpec{Login: &login})
 	if err == nil {
-		return uuid.Nil, model.ErrUserLoginAlreadyUsed
+		return model.ErrUserLoginAlreadyUsed
 	}
-
-	userID, err := u.userRepository.NextID()
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	status := model.Blocked
-	currentTime := time.Now()
-	err = u.userRepository.Store(model.User{
-		UserID:    userID,
-		Status:    status,
-		Login:     login,
-		CreatedAt: currentTime,
-		UpdatedAt: currentTime,
-	})
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	return userID, u.eventDispatcher.Dispatch(&model.UserCreated{
-		UserID:    userID,
-		Status:    status,
-		Login:     login,
-		CreatedAt: currentTime,
-	})
-}
-
-func (u userService) UpdateUserStatus(userID uuid.UUID, status model.UserStatus) error {
-	user, err := u.userRepository.Find(model.FindSpec{
-		UserID: &userID,
-	})
-	if err != nil {
+	if !errors.Is(err, model.ErrUserNotFound) {
 		return err
 	}
 
-	if user.Status == status {
-		return nil
-	}
-
-	currentTime := time.Now()
-	user.Status = status
-	user.UpdatedAt = currentTime
-	err = u.userRepository.Store(*user)
-	if err != nil {
-		return err
-	}
-
-	return u.eventDispatcher.Dispatch(&model.UserUpdated{
-		UserID:    userID,
-		UpdatedAt: currentTime,
-		UpdatedFields: &struct {
-			Status   *model.UserStatus
-			Email    *string
-			Telegram *string
-		}{Status: &status},
-	})
-}
-
-// nolint:dupl
-func (u userService) UpdateUserEmail(userID uuid.UUID, email *string) error {
-	user, err := u.userRepository.Find(model.FindSpec{
-		UserID: &userID,
-	})
-	if err != nil {
-		return err
-	}
-	if reflect.DeepEqual(user.Email, email) {
-		return nil
-	}
-
-	if email != nil {
-		userWithEmail, err := u.userRepository.Find(model.FindSpec{
-			Email: email,
-		})
-		if err != nil && !errors.Is(err, model.ErrUserNotFound) {
-			return err
-		}
-		if userWithEmail != nil && userWithEmail.UserID != user.UserID {
+	// Проверка уникальности email
+	if email != nil && *email != "" {
+		_, err := u.userRepository.Find(model.FindSpec{Email: email})
+		if err == nil {
 			return model.ErrUserEmailAlreadyUsed
 		}
+		if !errors.Is(err, model.ErrUserNotFound) {
+			return err
+		}
+	}
+
+	// Проверка уникальности telegram
+	if telegram != nil && *telegram != "" {
+		_, err := u.userRepository.Find(model.FindSpec{Telegram: telegram})
+		if err == nil {
+			return model.ErrUserTelegramAlreadyUsed
+		}
+		if !errors.Is(err, model.ErrUserNotFound) {
+			return err
+		}
 	}
 
 	currentTime := time.Now()
-	user.Email = email
-	user.UpdatedAt = currentTime
-	err = u.userRepository.Store(*user)
-	if err != nil {
-		return err
-	}
-
-	if email == nil {
-		return u.eventDispatcher.Dispatch(&model.UserUpdated{
-			UserID:    userID,
-			UpdatedAt: currentTime,
-			RemovedFields: &struct {
-				Email    *bool
-				Telegram *bool
-			}{Email: toPtr(true)},
-		})
-	}
-
-	return u.eventDispatcher.Dispatch(&model.UserUpdated{
+	user := model.User{
 		UserID:    userID,
+		Status:    status,
+		Login:     login,
+		Email:     email,
+		Telegram:  telegram,
+		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
-		UpdatedFields: &struct {
-			Status   *model.UserStatus
-			Email    *string
-			Telegram *string
-		}{Email: email},
-	})
+	}
+
+	return u.userRepository.Store(user)
 }
 
-// nolint:dupl
-func (u userService) UpdateUserTelegram(userID uuid.UUID, telegram *string) error {
-	user, err := u.userRepository.Find(model.FindSpec{
-		UserID: &userID,
-	})
+func (u userService) UpdateUser(userID uuid.UUID, params UpdateUserParams) error {
+	user, err := u.userRepository.Find(model.FindSpec{UserID: &userID})
 	if err != nil {
 		return err
 	}
-	if reflect.DeepEqual(user.Telegram, telegram) {
+
+	currentTime := time.Now()
+	hasChanges := false
+
+	// Статус
+	if params.Status != nil && user.Status != *params.Status {
+		user.Status = *params.Status
+		hasChanges = true
+	}
+
+	// Email
+	if changed, err := u.handleFieldUpdate(user, "email", params.Email); err != nil {
+		return err
+	} else if changed {
+		user.Email = params.Email
+		hasChanges = true
+	}
+
+	// Telegram
+	if changed, err := u.handleFieldUpdate(user, "telegram", params.Telegram); err != nil {
+		return err
+	} else if changed {
+		user.Telegram = params.Telegram
+		hasChanges = true
+	}
+
+	if !hasChanges {
 		return nil
 	}
 
-	if telegram != nil {
-		userWithTelegram, err := u.userRepository.Find(model.FindSpec{
-			Telegram: telegram,
-		})
-		if err != nil && !errors.Is(err, model.ErrUserNotFound) {
-			return err
-		}
-		if userWithTelegram != nil && userWithTelegram.UserID != user.UserID {
-			return model.ErrUserTelegramAlreadyUsed
-		}
-	}
-
-	currentTime := time.Now()
-	user.Telegram = telegram
 	user.UpdatedAt = currentTime
-	err = u.userRepository.Store(*user)
-	if err != nil {
+	if err := u.userRepository.Store(*user); err != nil {
 		return err
 	}
 
-	if telegram == nil {
-		return u.eventDispatcher.Dispatch(&model.UserUpdated{
-			UserID:    userID,
-			UpdatedAt: currentTime,
-			RemovedFields: &struct {
-				Email    *bool
-				Telegram *bool
-			}{Telegram: toPtr(true)},
-		})
+	// Публикуем событие ОДИН РАЗ
+	event := model.UserUpdated{
+		UserID:    userID,
+		UpdatedAt: currentTime.UnixMilli(),
 	}
 
-	return u.eventDispatcher.Dispatch(&model.UserUpdated{
-		UserID:    userID,
-		UpdatedAt: currentTime,
-		UpdatedFields: &struct {
-			Status   *model.UserStatus
-			Email    *string
-			Telegram *string
-		}{Telegram: telegram},
-	})
+	updatedFields := &model.UpdatedFields{}
+	hasUpdated := false
+
+	if params.Status != nil {
+		updatedFields.Status = params.Status
+		hasUpdated = true
+	}
+	if params.Email != nil {
+		updatedFields.Email = params.Email
+		hasUpdated = true
+	}
+	if params.Telegram != nil {
+		updatedFields.Telegram = params.Telegram
+		hasUpdated = true
+	}
+
+	if hasUpdated {
+		event.UpdatedFields = updatedFields
+	}
+
+	// Обработка удаления полей
+	if params.Email == nil && user.Email == nil {
+		// Поле было удалено
+		if event.RemovedFields == nil {
+			event.RemovedFields = &model.RemovedFields{}
+		}
+		event.RemovedFields.Email = toPtr(true)
+	}
+	if params.Telegram == nil && user.Telegram == nil {
+		if event.RemovedFields == nil {
+			event.RemovedFields = &model.RemovedFields{}
+		}
+		event.RemovedFields.Telegram = toPtr(true)
+	}
+
+	return nil
+}
+
+func (u userService) handleFieldUpdate(user *model.User, field string, newValue *string) (bool, error) {
+	var currentValue *string
+	switch field {
+	case email:
+		currentValue = user.Email
+	case "telegram":
+		currentValue = user.Telegram
+	}
+
+	// Удаление поля
+	if newValue == nil {
+		return currentValue != nil, nil
+	}
+
+	// Проверка на пустое значение
+	if *newValue == "" {
+		if currentValue != nil {
+			return true, nil // Удаляем существующее значение
+		}
+		return false, nil // Нечего удалять
+	}
+
+	// Проверка на изменение значения
+	valuesEqual := currentValue != nil && *currentValue == *newValue
+	if valuesEqual {
+		return false, nil
+	}
+
+	// Проверка уникальности
+	spec := model.FindSpec{}
+	if field == email {
+		spec.Email = newValue
+	} else {
+		spec.Telegram = newValue
+	}
+
+	if existing, _ := u.userRepository.Find(spec); existing != nil && existing.UserID != user.UserID {
+		if field == email {
+			return false, model.ErrUserEmailAlreadyUsed
+		}
+		return false, model.ErrUserTelegramAlreadyUsed
+	}
+
+	return true, nil
 }
 
 func (u userService) DeleteUser(userID uuid.UUID, hard bool) error {
-	user, err := u.userRepository.Find(model.FindSpec{
-		UserID: &userID,
-	})
+	user, err := u.userRepository.Find(model.FindSpec{UserID: &userID})
 	if err != nil {
 		return err
 	}
@@ -229,17 +246,8 @@ func (u userService) DeleteUser(userID uuid.UUID, hard bool) error {
 	user.Status = model.Deleted
 	user.UpdatedAt = currentTime
 	user.DeletedAt = &currentTime
-	err = u.userRepository.Store(*user)
-	if err != nil {
-		return err
-	}
 
-	return u.eventDispatcher.Dispatch(&model.UserDeleted{
-		UserID:    userID,
-		Status:    model.Deleted,
-		DeletedAt: currentTime,
-		Hard:      hard,
-	})
+	return u.userRepository.Store(*user)
 }
 
 func toPtr[T any](v T) *T {

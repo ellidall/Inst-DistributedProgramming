@@ -13,8 +13,10 @@ import (
 )
 
 type UserService interface {
-	StoreUser(ctx context.Context, user appdata.User) (uuid.UUID, error)
-	SetUserStatus(ctx context.Context, userID uuid.UUID, status int) error
+	CreateUser(ctx context.Context, user appdata.User) error
+	UpdateUser(ctx context.Context, userID uuid.UUID, update appdata.UserUpdate) error
+	BlockUser(ctx context.Context, userID uuid.UUID) error
+	DeleteUser(ctx context.Context, userID uuid.UUID) error
 	FindUser(ctx context.Context, userID uuid.UUID) (appdata.User, error)
 }
 
@@ -36,49 +38,59 @@ type userService struct {
 	eventDispatcher outbox.EventDispatcher[outbox.Event]
 }
 
-func (s *userService) StoreUser(ctx context.Context, user appdata.User) (uuid.UUID, error) {
+func (s *userService) CreateUser(ctx context.Context, user appdata.User) error {
 	var lockNames []string
-	if user.UserID != uuid.Nil {
-		lockNames = append(lockNames, userLock(user.UserID))
-	} else {
-		lockNames = append(lockNames, userLoginLock(user.Login))
-	}
-	if user.Email != nil {
+	lockNames = append(lockNames, userLoginLock(user.Login))
+	if user.Email != nil && *user.Email != "" {
 		lockNames = append(lockNames, userEmailLock(*user.Email))
 	}
-	if user.Telegram != nil {
+	if user.Telegram != nil && *user.Telegram != "" {
 		lockNames = append(lockNames, userTelegramLock(*user.Telegram))
 	}
 
-	userID := user.UserID
-	err := s.luow.Execute(ctx, lockNames, func(provider RepositoryProvider) error {
+	return s.luow.Execute(ctx, lockNames, func(provider RepositoryProvider) error {
+		status := model.Blocked
+		if user.Status != 0 {
+			status = model.UserStatus(user.Status)
+		}
+
 		domainService := s.domainService(ctx, provider.UserRepository(ctx))
-		if user.UserID == uuid.Nil {
-			uID, err := domainService.CreateUser(user.Login)
-			if err != nil {
-				return err
-			}
-			userID = uID
-		}
-
-		err := domainService.UpdateUserEmail(userID, user.Email)
-		if err != nil {
-			return err
-		}
-
-		err = domainService.UpdateUserTelegram(userID, user.Telegram)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return domainService.CreateUser(user.UserID, user.Login, user.Email, user.Telegram, status)
 	})
-	return userID, err
 }
 
-func (s *userService) SetUserStatus(ctx context.Context, userID uuid.UUID, status int) error {
+func (s *userService) UpdateUser(ctx context.Context, userID uuid.UUID, update appdata.UserUpdate) error {
+	var lockNames []string
+	lockNames = append(lockNames, userLock(userID))
+	if update.Email != nil && *update.Email != "" {
+		lockNames = append(lockNames, userEmailLock(*update.Email))
+	}
+	if update.Telegram != nil && *update.Telegram != "" {
+		lockNames = append(lockNames, userTelegramLock(*update.Telegram))
+	}
+
+	return s.luow.Execute(ctx, lockNames, func(provider RepositoryProvider) error {
+		domainService := s.domainService(ctx, provider.UserRepository(ctx))
+		params := s.convertToUpdateParams(update)
+		return domainService.UpdateUser(userID, params) // ← только публикация события
+	})
+}
+
+func (s *userService) BlockUser(ctx context.Context, userID uuid.UUID) error {
 	return s.luow.Execute(ctx, []string{userLock(userID)}, func(provider RepositoryProvider) error {
-		return s.domainService(ctx, provider.UserRepository(ctx)).UpdateUserStatus(userID, model.UserStatus(status))
+		domainService := s.domainService(ctx, provider.UserRepository(ctx))
+		status := model.Blocked
+		return domainService.UpdateUser(userID, struct {
+			Status   *model.UserStatus
+			Email    *string
+			Telegram *string
+		}{Status: &status})
+	})
+}
+
+func (s *userService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	return s.luow.Execute(ctx, []string{userLock(userID)}, func(provider RepositoryProvider) error {
+		return s.domainService(ctx, provider.UserRepository(ctx)).DeleteUser(userID, false)
 	})
 }
 
@@ -91,7 +103,7 @@ func (s *userService) FindUser(ctx context.Context, userID uuid.UUID) (appdata.U
 		}
 		user = appdata.User{
 			UserID:   domainUser.UserID,
-			Status:   appdata.UserStatus(domainUser.Status),
+			Status:   int(domainUser.Status),
 			Login:    domainUser.Login,
 			Email:    domainUser.Email,
 			Telegram: domainUser.Telegram,
@@ -99,6 +111,17 @@ func (s *userService) FindUser(ctx context.Context, userID uuid.UUID) (appdata.U
 		return nil
 	})
 	return user, err
+}
+
+func (s *userService) convertToUpdateParams(update appdata.UserUpdate) service.UpdateUserParams {
+	params := service.UpdateUserParams{}
+	if update.Status != nil {
+		status := model.UserStatus(*update.Status)
+		params.Status = &status
+	}
+	params.Email = update.Email
+	params.Telegram = update.Telegram
+	return params
 }
 
 func (s *userService) domainService(ctx context.Context, repository model.UserRepository) service.UserService {

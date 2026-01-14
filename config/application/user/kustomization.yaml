@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - user-api.yaml
+  - user-message-handler.yaml
+  - user-temporal.yaml
+  - user-secret.yaml

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"gitea.xscloud.ru/xscloud/golib/pkg/application/logging"
@@ -44,8 +43,14 @@ func (t *amqpTransport) handle(ctx context.Context, delivery amqp.Delivery) erro
 		if err != nil {
 			return err
 		}
-		fmt.Println("event = ", e)
 		return t.workflowService.RunCreateUserWorkflow(ctx, delivery.CorrelationID, e)
+	case model.UserUpdated{}.Type():
+		var e model.UserUpdated
+		err := json.Unmarshal(delivery.Body, &e)
+		if err != nil {
+			return err
+		}
+		return t.workflowService.RunUpdateUserWorkflow(ctx, delivery.CorrelationID, e)
 	default:
 		return errUnhandledDelivery
 	}

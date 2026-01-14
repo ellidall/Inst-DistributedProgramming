@@ -24,7 +24,7 @@ func (s eventSerializer) Serialize(event outbox.Event) (string, error) {
 			Login:     e.Login,
 			Email:     e.Email,
 			Telegram:  e.Telegram,
-			CreatedAt: e.CreatedAt.Unix(),
+			CreatedAt: e.CreatedAt,
 		})
 		return string(b), errors.WithStack(err)
 	case *model.UserUpdated:

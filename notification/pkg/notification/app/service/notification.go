@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -37,6 +38,7 @@ type notificationService struct {
 }
 
 func (s *notificationService) CreateNotification(ctx context.Context, payload data.NotificationPayload) (uuid.UUID, error) {
+	fmt.Println("CreateNotification payload = ", payload)
 	var id uuid.UUID
 	err := s.luow.Execute(ctx, []string{notificationLock(id)}, func(provider RepositoryProvider) error {
 		domainPayload := model.NotificationPayload{

@@ -1,0 +1,20 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: rp-practice
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __PROJECT_ROOT__/data/master
+        containerPath: /data
+  - role: worker
+    extraMounts:
+      - hostPath: __PROJECT_ROOT__/data/worker1
+        containerPath: /data
+  - role: worker
+    extraMounts:
+      - hostPath: __PROJECT_ROOT__/data/worker2
+        containerPath: /data
+  - role: worker
+    extraMounts:
+      - hostPath: __PROJECT_ROOT__/data/worker3
+        containerPath: /data

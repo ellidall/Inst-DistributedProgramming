@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"gitea.xscloud.ru/xscloud/golib/pkg/infrastructure/mysql"
@@ -29,6 +30,7 @@ func (w *walletRepository) NextID() (uuid.UUID, error) {
 }
 
 func (w *walletRepository) Store(wallet *model.Wallet) error {
+	fmt.Println("Store wallet = ", wallet)
 	_, err := w.client.ExecContext(w.ctx,
 		`
 	INSERT INTO wallet (wallet_id, user_id, balance, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?)
