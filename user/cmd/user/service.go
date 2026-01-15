@@ -5,12 +5,15 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"reflect"
+	"unsafe"
 
 	"gitea.xscloud.ru/xscloud/golib/pkg/application/logging"
 	libio "gitea.xscloud.ru/xscloud/golib/pkg/common/io"
 	"gitea.xscloud.ru/xscloud/golib/pkg/infrastructure/mysql"
 	"gitea.xscloud.ru/xscloud/golib/pkg/infrastructure/outbox"
 	"github.com/gorilla/mux"
+	"github.com/jmoiron/sqlx"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -49,6 +52,14 @@ func service(logger logging.Logger) *cli.Command {
 				return err
 			}
 			closer.AddCloser(databaseConnector)
+
+			val := reflect.ValueOf(databaseConnector).Elem()
+			field := val.FieldByName("db")
+			//nolint:gosec
+			realField := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+			sqlxDB := realField.Interface().(*sqlx.DB)
+			sqlDB := sqlxDB.DB
+
 			databaseConnectionPool := mysql.NewConnectionPool(databaseConnector.TransactionalClient())
 
 			libUoW := mysql.NewUnitOfWork(databaseConnectionPool, inframysql.NewRepositoryProvider)
@@ -81,7 +92,7 @@ func service(logger logging.Logger) *cli.Command {
 			errGroup.Go(func() error {
 				router := mux.NewRouter()
 				registerHealthcheck(router)
-				registerMetrics(router)
+				registerMetrics(router, sqlDB)
 				// nolint:gosec
 				server := http.Server{
 					Addr:    cnf.Service.HTTPAddress,

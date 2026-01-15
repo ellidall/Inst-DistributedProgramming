@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"reflect"
+	"time"
+	"unsafe"
 
 	"gitea.xscloud.ru/xscloud/golib/pkg/application/logging"
 	libio "gitea.xscloud.ru/xscloud/golib/pkg/common/io"
@@ -10,6 +14,7 @@ import (
 	"gitea.xscloud.ru/xscloud/golib/pkg/infrastructure/mysql"
 	"gitea.xscloud.ru/xscloud/golib/pkg/infrastructure/outbox"
 	"github.com/gorilla/mux"
+	"github.com/jmoiron/sqlx"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 
@@ -44,6 +49,14 @@ func messageHandler(logger logging.Logger) *cli.Command {
 				return err
 			}
 			closer.AddCloser(databaseConnector)
+
+			val := reflect.ValueOf(databaseConnector).Elem()
+			field := val.FieldByName("db")
+			//nolint:gosec
+			realField := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+			sqlxDB := realField.Interface().(*sqlx.DB)
+			sqlDB := sqlxDB.DB
+
 			databaseConnectionPool := mysql.NewConnectionPool(databaseConnector.TransactionalClient())
 
 			temporalClient, err := temporal.NewClient(logger, cnf.Temporal.Host)
@@ -76,9 +89,27 @@ func messageHandler(logger logging.Logger) *cli.Command {
 				bindConfig,
 			)
 			amqpTransport := integrationevent.NewAMQPTransport(logger, workflowService)
+			originalHandler := amqpTransport.Handler()
+
+			instrumentedHandler := func(ctx context.Context, delivery amqp.Delivery) error {
+				start := time.Now()
+
+				err := originalHandler(ctx, delivery)
+
+				duration := time.Since(start).Seconds()
+				MessageDuration.Observe(duration)
+
+				if err != nil {
+					MessagesProcessed.WithLabelValues("error").Inc()
+				} else {
+					MessagesProcessed.WithLabelValues("success").Inc()
+				}
+
+				return err
+			}
 			amqpConnection.Consumer(
 				c.Context,
-				amqpTransport.Handler(),
+				instrumentedHandler,
 				queueConfig,
 				bindConfig,
 				&amqp.QoSConfig{
@@ -108,7 +139,7 @@ func messageHandler(logger logging.Logger) *cli.Command {
 			errGroup.Go(func() error {
 				router := mux.NewRouter()
 				registerHealthcheck(router)
-				registerMetrics(router)
+				registerMetrics(router, sqlDB)
 				// nolint:gosec
 				server := http.Server{
 					Addr:    cnf.Service.HTTPAddress,
