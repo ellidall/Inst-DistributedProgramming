@@ -4,3 +4,5 @@ resources:
   - mysql.yaml
   - secret.yaml
   - user-secret.yaml
+  - notification-secret.yaml
+  - payment-secret.yaml

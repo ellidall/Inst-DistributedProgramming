@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-message-handler
+  labels:
+    app: notification-message-handler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: notification-message-handler
+  template:
+    metadata:
+      name: notification-message-handler
+      labels:
+        app: notification-message-handler
+    spec:
+      initContainers:
+        - name: notification-migrator
+          image: notification:latest
+          imagePullPolicy: Never
+          args:
+            - migrate
+          env:
+            - name: NOTIFICATION_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: NOTIFICATION_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_NAME
+            - name: NOTIFICATION_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_USER
+            - name: NOTIFICATION_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_PASSWORD
+      containers:
+        - name: notification-message-handler
+          image: notification:latest
+          livenessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          readinessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          imagePullPolicy: Never
+          args:
+            - message-handler
+          env:
+            - name: NOTIFICATION_SERVICE_GRACE_PERIOD
+              value: "15s"
+            - name: NOTIFICATION_SERVICE_GRPC_ADDRESS
+              value: ":8081"
+            - name: NOTIFICATION_SERVICE_HTTP_ADDRESS
+              value: ":8082"
+            - name: NOTIFICATION_DATABASE_MAX_CONNECTIONS
+              value: "20"
+            - name: NOTIFICATION_DATABASE_CONNECTIONS_MAX_LIFE_TIME
+              value: "10m"
+            - name: NOTIFICATION_DATABASE_CONNECTIONS_MAX_IDLE_TIME
+              value: "1m"
+            - name: NOTIFICATION_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: NOTIFICATION_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_NAME
+            - name: NOTIFICATION_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_USER
+            - name: NOTIFICATION_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_PASSWORD
+            - name: NOTIFICATION_AMQP_HOST
+              value: rabbitmq.infrastructure.svc.cluster.local:5672
+            - name: NOTIFICATION_AMQP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: rabbitmq-username
+            - name: NOTIFICATION_AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: rabbitmq-password
+            - name: NOTIFICATION_TEMPORAL_HOST
+              value: temporal.infrastructure.svc.cluster.local:7233
+          ports:
+            - containerPort: 8081
+              protocol: TCP
+              name: grpc
+            - containerPort: 8082
+              protocol: TCP
+              name: http
+      restartPolicy: Always
+      

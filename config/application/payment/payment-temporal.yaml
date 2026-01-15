@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-temporal
+  labels:
+    app: payment-temporal
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: payment-temporal
+  template:
+    metadata:
+      name: payment-temporal
+      labels:
+        app: payment-temporal
+    spec:
+      initContainers:
+        - name: payment-migrator
+          image: payment:latest
+          imagePullPolicy: Never
+          args:
+            - migrate
+          env:
+            - name: PAYMENT_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: PAYMENT_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_NAME
+            - name: PAYMENT_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_USER
+            - name: PAYMENT_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_PASSWORD
+      containers:
+        - name: payment-temporal
+          image: payment:latest
+          livenessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          readinessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          imagePullPolicy: Never
+          args:
+            - workflow-worker
+          env:
+            - name: PAYMENT_SERVICE_GRACE_PERIOD
+              value: "15s"
+            - name: PAYMENT_SERVICE_GRPC_ADDRESS
+              value: ":8081"
+            - name: PAYMENT_SERVICE_HTTP_ADDRESS
+              value: ":8082"
+            - name: PAYMENT_DATABASE_MAX_CONNECTIONS
+              value: "20"
+            - name: PAYMENT_DATABASE_CONNECTIONS_MAX_LIFE_TIME
+              value: "10m"
+            - name: PAYMENT_DATABASE_CONNECTIONS_MAX_IDLE_TIME
+              value: "1m"
+            - name: PAYMENT_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: PAYMENT_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_NAME
+            - name: PAYMENT_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_USER
+            - name: PAYMENT_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_PASSWORD
+            - name: PAYMENT_TEMPORAL_HOST
+              value: temporal.infrastructure.svc.cluster.local:7233
+          ports:
+            - containerPort: 8082
+              protocol: TCP
+              name: http
+      restartPolicy: Always
+      

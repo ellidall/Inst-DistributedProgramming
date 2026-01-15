@@ -79,6 +79,13 @@ spec:
             - name: mysql-user-service
               mountPath: /secrets/user-secret
               readOnly: true
+            - name: mysql-notification-service
+              mountPath: /secrets/notification-secret
+              readOnly: true
+            - name: mysql-payment-service
+              mountPath: /secrets/payment-secret
+              readOnly: true
+              #TODO:
       containers:
         - name: mysql
           image: mysql:8.0
@@ -102,3 +109,10 @@ spec:
         - name: mysql-user-service
           secret:
             secretName: mysql-user-service
+        - name: mysql-notification-service
+          secret:
+            secretName: mysql-notification-service
+        - name: mysql-payment-service
+          secret:
+            secretName: mysql-payment-service
+            # TODO:

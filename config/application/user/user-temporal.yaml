@@ -5,7 +5,7 @@ metadata:
   labels:
     app: user-temporal
 spec:
-  replicas: 4
+  replicas: 1
   strategy:
     type: RollingUpdate
   selector:
@@ -21,13 +21,16 @@ spec:
         - name: user-migrator
           image: user:latest
           imagePullPolicy: Never
-          command:
+          args:
             - migrate
           env:
             - name: USER_DATABASE_HOST
               value: mysql.infrastructure.svc.cluster.local:3306
             - name: USER_DATABASE_NAME
-              value: userservice_db
+              valueFrom:
+                secretKeyRef:
+                  name: user-database-access
+                  key: USER_DATABASE_NAME
             - name: USER_DATABASE_USER
               valueFrom:
                 secretKeyRef:
@@ -50,13 +53,28 @@ spec:
               port: http
               path: /healthz
           imagePullPolicy: Never
-          command:
+          args:
             - workflow-worker
           env:
+            - name: USER_SERVICE_GRACE_PERIOD
+              value: "15s"
+            - name: USER_SERVICE_GRPC_ADDRESS
+              value: ":8081"
+            - name: USER_SERVICE_HTTP_ADDRESS
+              value: ":8082"
+            - name: USER_DATABASE_MAX_CONNECTIONS
+              value: "20"
+            - name: USER_DATABASE_CONNECTIONS_MAX_LIFE_TIME
+              value: "10m"
+            - name: USER_DATABASE_CONNECTIONS_MAX_IDLE_TIME
+              value: "1m"
             - name: USER_DATABASE_HOST
               value: mysql.infrastructure.svc.cluster.local:3306
             - name: USER_DATABASE_NAME
-              value: userservice_db
+              valueFrom:
+                secretKeyRef:
+                  name: user-database-access
+                  key: USER_DATABASE_NAME
             - name: USER_DATABASE_USER
               valueFrom:
                 secretKeyRef:

@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: user-api
+  name: payment-api
   namespace: application
 spec:
   selector:
-    app: user-api
+    app: payment-api
   ports:
     - name: grpc
       port: 8081
@@ -17,49 +17,49 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: user-api
+  name: payment-api
   labels:
-    app: user-api
+    app: payment-api
 spec:
   replicas: 1
   strategy:
     type: RollingUpdate
   selector:
     matchLabels:
-      app: user-api
+      app: payment-api
   template:
     metadata:
-      name: user-api
+      name: payment-api
       labels:
-        app: user-api
+        app: payment-api
     spec:
       initContainers:
-        - name: user-migrator
-          image: user:latest
+        - name: payment-migrator
+          image: payment:latest
           imagePullPolicy: Never
           args:
             - migrate
           env:
-            - name: USER_DATABASE_HOST
+            - name: PAYMENT_DATABASE_HOST
               value: mysql.infrastructure.svc.cluster.local:3306
-            - name: USER_DATABASE_NAME
+            - name: PAYMENT_DATABASE_NAME
               valueFrom:
                 secretKeyRef:
-                  name: user-database-access
-                  key: USER_DATABASE_NAME
-            - name: USER_DATABASE_USER
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_NAME
+            - name: PAYMENT_DATABASE_USER
               valueFrom:
                 secretKeyRef:
-                  name: user-database-access
-                  key: USER_DATABASE_USER
-            - name: USER_DATABASE_PASSWORD
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_USER
+            - name: PAYMENT_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: user-database-access
-                  key: USER_DATABASE_PASSWORD
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_PASSWORD
       containers:
-        - name: user-api
-          image: user:latest
+        - name: payment-api
+          image: payment:latest
           livenessProbe:
             httpGet:
               port: http
@@ -72,35 +72,35 @@ spec:
           args:
             - service
           env:
-            - name: USER_SERVICE_GRACE_PERIOD
+            - name: PAYMENT_SERVICE_GRACE_PERIOD
               value: "15s"
-            - name: USER_SERVICE_GRPC_ADDRESS
+            - name: PAYMENT_SERVICE_GRPC_ADDRESS
               value: ":8081"
-            - name: USER_SERVICE_HTTP_ADDRESS
+            - name: PAYMENT_SERVICE_HTTP_ADDRESS
               value: ":8082"
-            - name: USER_DATABASE_MAX_CONNECTIONS
+            - name: PAYMENT_DATABASE_MAX_CONNECTIONS
               value: "20"
-            - name: USER_DATABASE_CONNECTIONS_MAX_LIFE_TIME
+            - name: PAYMENT_DATABASE_CONNECTIONS_MAX_LIFE_TIME
               value: "10m"
-            - name: USER_DATABASE_CONNECTIONS_MAX_IDLE_TIME
+            - name: PAYMENT_DATABASE_CONNECTIONS_MAX_IDLE_TIME
               value: "1m"
-            - name: USER_DATABASE_HOST
+            - name: PAYMENT_DATABASE_HOST
               value: mysql.infrastructure.svc.cluster.local:3306
-            - name: USER_DATABASE_NAME
+            - name: PAYMENT_DATABASE_NAME
               valueFrom:
                 secretKeyRef:
-                  name: user-database-access
-                  key: USER_DATABASE_NAME
-            - name: USER_DATABASE_USER
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_NAME
+            - name: PAYMENT_DATABASE_USER
               valueFrom:
                 secretKeyRef:
-                  name: user-database-access
-                  key: USER_DATABASE_USER
-            - name: USER_DATABASE_PASSWORD
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_USER
+            - name: PAYMENT_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: user-database-access
-                  key: USER_DATABASE_PASSWORD
+                  name: payment-database-access
+                  key: PAYMENT_DATABASE_PASSWORD
           ports:
             - containerPort: 8081
               protocol: TCP

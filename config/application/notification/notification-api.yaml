@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-api
+  namespace: application
+spec:
+  selector:
+    app: notification-api
+  ports:
+    - name: grpc
+      port: 8081
+      targetPort: 8081
+    - name: http
+      port: 8082
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-api
+  labels:
+    app: notification-api
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: notification-api
+  template:
+    metadata:
+      name: notification-api
+      labels:
+        app: notification-api
+    spec:
+      initContainers:
+        - name: notification-migrator
+          image: notification:latest
+          imagePullPolicy: Never
+          args:
+            - migrate
+          env:
+            - name: NOTIFICATION_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: NOTIFICATION_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_NAME
+            - name: NOTIFICATION_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_USER
+            - name: NOTIFICATION_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_PASSWORD
+      containers:
+        - name: notification-api
+          image: notification:latest
+          livenessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          readinessProbe:
+            httpGet:
+              port: http
+              path: /healthz
+          imagePullPolicy: Never
+          args:
+            - service
+          env:
+            - name: NOTIFICATION_SERVICE_GRACE_PERIOD
+              value: "15s"
+            - name: NOTIFICATION_SERVICE_GRPC_ADDRESS
+              value: ":8081"
+            - name: NOTIFICATION_SERVICE_HTTP_ADDRESS
+              value: ":8082"
+            - name: NOTIFICATION_DATABASE_MAX_CONNECTIONS
+              value: "20"
+            - name: NOTIFICATION_DATABASE_CONNECTIONS_MAX_LIFE_TIME
+              value: "10m"
+            - name: NOTIFICATION_DATABASE_CONNECTIONS_MAX_IDLE_TIME
+              value: "1m"
+            - name: NOTIFICATION_DATABASE_HOST
+              value: mysql.infrastructure.svc.cluster.local:3306
+            - name: NOTIFICATION_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_NAME
+            - name: NOTIFICATION_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_USER
+            - name: NOTIFICATION_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: notification-database-access
+                  key: NOTIFICATION_DATABASE_PASSWORD
+          ports:
+            - containerPort: 8081
+              protocol: TCP
+              name: grpc
+            - containerPort: 8082
+              protocol: TCP
+              name: http
+      restartPolicy: Always
+      
