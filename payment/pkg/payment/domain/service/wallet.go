@@ -16,13 +16,14 @@ var (
 	ErrInvalidWalletBalance = errors.New("invalid wallet balance")
 )
 
-type Wallet interface {
+type WalletService interface {
 	CreateWallet(userID uuid.UUID) (uuid.UUID, error)
 	RemoveWallet(walletID uuid.UUID) error
 	UpdateWalletBalance(walletID uuid.UUID, newBalance float64) error
+	DeductFunds(userID uuid.UUID, amount float64) (uuid.UUID, error)
 }
 
-func NewWalletService(repo model.WalletRepository, dispatcher commonevent.Dispatcher) Wallet {
+func NewWalletService(repo model.WalletRepository, dispatcher commonevent.Dispatcher) WalletService {
 	return &walletService{
 		repo:       repo,
 		dispatcher: dispatcher,
@@ -106,4 +107,37 @@ func (w walletService) UpdateWalletBalance(walletID uuid.UUID, newBalance float6
 		OldBalance: oldBalance,
 		NewBalance: newBalance,
 	})
+}
+
+func (w walletService) DeductFunds(userID uuid.UUID, amount float64) (uuid.UUID, error) {
+	// 1. Ищем кошелек пользователя
+	wallet, err := w.repo.FindByUserID(userID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	// 2. Проверяем баланс
+	if wallet.Balance < amount {
+		return wallet.ID, model.ErrInsufficientFunds
+	}
+
+	oldBalance := wallet.Balance
+	newBalance := wallet.Balance - amount
+
+	// 3. Обновляем баланс
+	wallet.Balance = newBalance
+	wallet.UpdatedAt = time.Now()
+
+	if err := w.repo.Store(wallet); err != nil {
+		return wallet.ID, err
+	}
+
+	// 4. Отправляем событие изменения баланса
+	err = w.dispatcher.Dispatch(model.WalletBalanceChanged{
+		WalletID:   wallet.ID,
+		OldBalance: oldBalance,
+		NewBalance: newBalance,
+	})
+
+	return wallet.ID, err
 }

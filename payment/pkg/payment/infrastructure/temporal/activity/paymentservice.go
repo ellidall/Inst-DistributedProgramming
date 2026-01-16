@@ -8,21 +8,22 @@ import (
 	"payment/pkg/payment/app/service"
 )
 
-func NewActivities(
-	paymentService service.PaymentService,
-	walletService service.WalletService,
-) *Activities {
-	return &Activities{
+type PayInput struct {
+	OrderID    uuid.UUID `json:"order_id"`
+	CustomerID uuid.UUID `json:"customer_id"`
+	Amount     float64   `json:"amount"`
+}
+
+func NewPaymentActivities(paymentService service.PaymentService) *PaymentActivities {
+	return &PaymentActivities{
 		paymentService: paymentService,
-		walletService:  walletService,
 	}
 }
 
-type Activities struct {
+type PaymentActivities struct {
 	paymentService service.PaymentService
-	walletService  service.WalletService
 }
 
-func (a *Activities) CreateWallet(ctx context.Context, userID uuid.UUID) (uuid.UUID, error) {
-	return a.walletService.CreateWallet(ctx, userID)
+func (a *PaymentActivities) Pay(ctx context.Context, input PayInput) error {
+	return a.paymentService.Pay(ctx, input.OrderID, input.CustomerID, input.Amount)
 }

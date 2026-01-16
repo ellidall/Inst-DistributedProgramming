@@ -1,44 +1,85 @@
-version: '3.3'
-
 services:
   product:
-    image: product
     container_name: product
+    ports:
+      - "8085:8081"
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8082:8081" # GRPC API port
+    command:
+      - service
     environment:
-      PRODUCT_DB_HOST: product-db
-      PRODUCT_DB_PORT: 3306
-      PRODUCT_DB_NAME: product
-      PRODUCT_DB_USER: product
-      PRODUCT_DB_PASSWORD: ${DB_PASSWORD}
-      PRODUCT_DB_MAX_CONN: 5
+      PRODUCT_DATABASE_HOST: product-db
+      PRODUCT_DATABASE_NAME: product_db
+      PRODUCT_DATABASE_USER: product
+      PRODUCT_DATABASE_PASSWORD: 12345Q
     depends_on:
-      - product-db
-    restart: unless-stopped
+      product-db:
+        condition: service_healthy
     networks:
       - common-net
 
+  product-workflow-worker:
+    container_name: product-workflow-worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - workflow-worker
+    environment:
+      PRODUCT_DATABASE_HOST: product-db
+      PRODUCT_DATABASE_NAME: product_db
+      PRODUCT_DATABASE_USER: product
+      PRODUCT_DATABASE_PASSWORD: 12345Q
+
+      PRODUCT_TEMPORAL_HOST: temporal:7233
+    depends_on:
+      product-db:
+        condition: service_healthy
+    networks:
+      - common-net
+
+  product-message-handler:
+    container_name: product-message-handler
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - message-handler
+    environment:
+      PRODUCT_DATABASE_HOST: product-db
+      PRODUCT_DATABASE_NAME: product_db
+      PRODUCT_DATABASE_USER: product
+      PRODUCT_DATABASE_PASSWORD: 12345Q
+
+      PRODUCT_AMQP_HOST: rmq
+      PRODUCT_AMQP_USER: guest
+      PRODUCT_AMQP_PASSWORD: guest
+
+      PRODUCT_TEMPORAL_HOST: temporal:7233
+    depends_on:
+      product-db:
+        condition: service_healthy
+    networks:
+      - common-net
 
   product-db:
-    image: percona:8.0
+    image: "mysql:8.3"
     container_name: product-db
-    environment:
-      MYSQL_DATABASE: product
-      MYSQL_USER: product
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "3307:3306"
+    command: [ "--max_connections=100" ]
     volumes:
-      - product-db-data:/var/lib/mysql
-    restart: unless-stopped
+      - "product-db-data:/var/lib/mysql"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: yes
+      MYSQL_DATABASE: product_db
+      MYSQL_USER: product
+      MYSQL_PASSWORD: 12345Q
+    healthcheck:
+      test: mysql -h127.0.0.1 -uroot -e 'SELECT 1'
+      interval: 10s
+      timeout: 30s
     networks:
       - common-net
-
 
 volumes:
   product-db-data:

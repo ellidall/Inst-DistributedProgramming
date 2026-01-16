@@ -68,7 +68,7 @@ func (o *orderRepository) Store(order *model.Order) error {
 				item.OrderID,
 				item.ProductID,
 				item.Count,
-				item.TotalPrice,
+				item.Price,
 			)
 			if err != nil {
 				return errors.WithStack(err)
@@ -149,10 +149,10 @@ func (o *orderRepository) loadOrderItems(orderID uuid.UUID) ([]model.OrderItem, 
 	items := make([]model.OrderItem, len(itemRows))
 	for i, row := range itemRows {
 		items[i] = model.OrderItem{
-			OrderID:    row.OrderID,
-			ProductID:  row.ProductID,
-			Count:      row.Count,
-			TotalPrice: row.TotalPrice,
+			OrderID:   row.OrderID,
+			ProductID: row.ProductID,
+			Count:     row.Count,
+			Price:     row.TotalPrice,
 		}
 	}
 

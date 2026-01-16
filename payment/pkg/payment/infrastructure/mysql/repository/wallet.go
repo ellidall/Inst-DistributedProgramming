@@ -83,6 +83,39 @@ func (w *walletRepository) Find(id uuid.UUID) (*model.Wallet, error) {
 	}, nil
 }
 
+func (w *walletRepository) FindByUserID(userID uuid.UUID) (*model.Wallet, error) {
+	walletRow := struct {
+		ID        uuid.UUID           `db:"wallet_id"`
+		UserID    uuid.UUID           `db:"user_id"`
+		Balance   float64             `db:"balance"`
+		CreatedAt time.Time           `db:"created_at"`
+		UpdatedAt time.Time           `db:"updated_at"`
+		DeletedAt sql.Null[time.Time] `db:"deleted_at"`
+	}{}
+
+	err := w.client.GetContext(
+		w.ctx,
+		&walletRow,
+		`SELECT wallet_id, user_id, balance, created_at, updated_at, deleted_at FROM wallet WHERE user_id = ?`,
+		userID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.WithStack(model.ErrWalletNotFound)
+		}
+		return nil, errors.WithStack(err)
+	}
+
+	return &model.Wallet{
+		ID:        walletRow.ID,
+		UserID:    walletRow.UserID,
+		Balance:   walletRow.Balance,
+		CreatedAt: walletRow.CreatedAt,
+		UpdatedAt: walletRow.UpdatedAt,
+		DeletedAt: fromSQLNull(walletRow.DeletedAt),
+	}, nil
+}
+
 func (w *walletRepository) Remove(id uuid.UUID) error {
 	now := time.Now()
 	_, err := w.client.ExecContext(w.ctx,

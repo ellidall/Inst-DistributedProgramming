@@ -1,8 +1,6 @@
 package worker
 
 import (
-	"fmt"
-
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
@@ -19,11 +17,11 @@ func InterruptChannel() <-chan interface{} {
 func NewWorker(
 	temporalClient client.Client,
 	walletService service.WalletService,
+	paymentService service.PaymentService,
 ) worker.Worker {
 	w := worker.New(temporalClient, temporal.TaskQueue, worker.Options{})
 	w.RegisterActivity(activity.NewWalletServiceActivities(walletService))
-	fmt.Println("Registering CreateWalletWorkflow...")
+	w.RegisterActivity(activity.NewPaymentActivities(paymentService))
 	w.RegisterWorkflow(workflows.CreateWalletWorkflow)
-	fmt.Println("Registered CreateWalletWorkflow")
 	return w
 }

@@ -4,18 +4,26 @@ package OrderService;
 option go_package = "/.;orderinternalapi";
 
 service OrderInternalAPI {
-  rpc StoreOrder(StoreOrderRequest) returns (StoreOrderResponse);
+  // Создание заказа. Возвращает ID созданного заказа.
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+
+  // Получение заказа по ID.
   rpc FindOrder(FindOrderRequest) returns (FindOrderResponse);
 }
 
-message StoreOrderRequest {
-  string orderID = 1;
-  string customerID = 2;
-  OrderStatus status = 3;
-  repeated OrderItem items = 4;
+// --- Requests / Responses ---
+
+message CreateOrderRequest {
+  string customerID = 1;
+  repeated CreateOrderItem items = 2;
 }
 
-message StoreOrderResponse {
+message CreateOrderItem {
+  string productID = 1;
+  int32 count = 2;
+}
+
+message CreateOrderResponse {
   string orderID = 1;
 }
 
@@ -27,12 +35,13 @@ message FindOrderResponse {
   string orderID = 1;
   string customerID = 2;
   OrderStatus status = 3;
-  repeated OrderItem items = 4;
+  repeated OrderItem items = 4; // Полная структура для ответа
   string createdAt = 5;
   string updatedAt = 6;
   optional string deletedAt = 7;
 }
 
+// Полная структура айтема (для чтения)
 message OrderItem {
   string orderID = 1;
   string productID = 2;

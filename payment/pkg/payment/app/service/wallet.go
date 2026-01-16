@@ -82,7 +82,7 @@ func (s *walletService) FindWallet(ctx context.Context, walletID uuid.UUID) (dat
 	return wallet, err
 }
 
-func (s *walletService) walletDomainService(ctx context.Context, repository model.WalletRepository) service.Wallet {
+func (s *walletService) walletDomainService(ctx context.Context, repository model.WalletRepository) service.WalletService {
 	return service.NewWalletService(repository, s.domainEventDispatcher(ctx))
 }
 

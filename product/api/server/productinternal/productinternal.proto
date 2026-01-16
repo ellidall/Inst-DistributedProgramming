@@ -1,13 +1,18 @@
 syntax = "proto3";
-package user;
+package product;
 
 option go_package = "/.;productinternal";
 
 service ProductInternalService {
-  rpc Ping(PingRequest) returns (PingResponse);
+  rpc CreateProduct(CreateProductRequest) returns (CreateProductResponse);
 }
 
-message PingRequest {}
-message PingResponse {
-  string message = 1;
+message CreateProductRequest {
+  string name = 1;
+  double price = 2;
+  int32 stock = 3;
+}
+
+message CreateProductResponse {
+  string productID = 1;
 }

@@ -10,111 +10,91 @@ import (
 	"payment/pkg/payment/domain/model"
 )
 
-var (
-	ErrInvalidPaymentStatus = errors.New("invalid payment status")
-)
-
-type Payment interface {
-	CreatePayment(orderID uuid.UUID, amount float64) (uuid.UUID, error)
-	RemovePayment(paymentID uuid.UUID) error
-	SetStatus(paymentID uuid.UUID, status model.PaymentStatus) error
+type PaymentService interface {
+	PerformPayment(orderID, customerID uuid.UUID, amount float64) (*model.Payment, error)
 }
 
-func NewPaymentService(repo model.PaymentRepository, dispatcher commonevent.Dispatcher) Payment {
+func NewPaymentService(
+	paymentRepo model.PaymentRepository,
+	walletService WalletService,
+	dispatcher commonevent.Dispatcher,
+) PaymentService {
 	return &paymentService{
-		repo:       repo,
-		dispatcher: dispatcher,
+		paymentRepo:   paymentRepo,
+		walletService: walletService,
+		dispatcher:    dispatcher,
 	}
 }
 
 type paymentService struct {
-	repo       model.PaymentRepository
-	dispatcher commonevent.Dispatcher
+	paymentRepo   model.PaymentRepository
+	walletService WalletService
+	dispatcher    commonevent.Dispatcher
 }
 
-func (p paymentService) CreatePayment(orderID uuid.UUID, amount float64) (uuid.UUID, error) {
-	paymentID, err := p.repo.NextID()
+func (s *paymentService) PerformPayment(orderID, customerID uuid.UUID, amount float64) (*model.Payment, error) {
+	paymentID, err := s.paymentRepo.NextID()
 	if err != nil {
-		return uuid.Nil, err
-	}
-
-	currentTime := time.Now()
-	err = p.repo.Store(&model.Payment{
-		ID:        paymentID,
-		OrderID:   orderID,
-		Amount:    amount,
-		Status:    model.Pending,
-		CreatedAt: currentTime,
-		UpdatedAt: currentTime,
-	})
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	return paymentID, p.dispatcher.Dispatch(model.PaymentCreated{
-		PaymentID: paymentID,
-		OrderID:   orderID,
-		Amount:    amount,
-	})
-}
-
-func (p paymentService) RemovePayment(paymentID uuid.UUID) error {
-	payment, err := p.repo.Find(paymentID)
-	if err != nil {
-		if errors.Is(err, model.ErrPaymentNotFound) {
-			return nil
-		}
-		return err
+		return nil, err
 	}
 
 	now := time.Now()
-	payment.DeletedAt = &now
-	payment.UpdatedAt = now
 
-	if err = p.repo.Store(payment); err != nil {
-		return err
-	}
+	// 1. Сначала пытаемся списать деньги через Wallet Service.
+	// Это критическая секция. Если тут упадет, платеж даже не создастся (или создастся Failed).
 
-	return p.dispatcher.Dispatch(model.PaymentRemoved{
-		PaymentID: paymentID,
-	})
-}
+	walletID, err := s.walletService.DeductFunds(customerID, amount)
 
-func (p paymentService) SetStatus(paymentID uuid.UUID, status model.PaymentStatus) error {
-	payment, err := p.repo.Find(paymentID)
+	var status model.PaymentStatus
 	if err != nil {
-		return err
+		// Если денег нет или кошелька нет - платеж Failed
+		if errors.Is(err, model.ErrInsufficientFunds) || errors.Is(err, model.ErrWalletNotFound) {
+			status = model.Failed
+		} else {
+			// Техническая ошибка (БД легла) - возвращаем ошибку наверх, пусть Temporal ретраит
+			return nil, err
+		}
+	} else {
+		status = model.Succeeded
 	}
 
-	oldStatus := payment.Status
-
-	if !p.isValidStatusTransition(payment.Status, status) {
-		return ErrInvalidPaymentStatus
+	// 2. Создаем запись о платеже
+	payment := &model.Payment{
+		ID:        paymentID,
+		WalletID:  walletID,
+		OrderID:   orderID,
+		Amount:    amount,
+		Status:    status,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
-	payment.Status = status
-	payment.UpdatedAt = time.Now()
-
-	if err = p.repo.Store(payment); err != nil {
-		return err
+	if err := s.paymentRepo.Store(payment); err != nil {
+		return nil, err
 	}
 
-	return p.dispatcher.Dispatch(model.PaymentStatusChanged{
+	err = s.dispatcher.Dispatch(model.PaymentCreated{
 		PaymentID: paymentID,
-		From:      oldStatus,
+		WalletID:  walletID,
+		OrderID:   orderID,
+		Amount:    amount,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.dispatcher.Dispatch(model.PaymentStatusChanged{
+		PaymentID: paymentID,
+		From:      model.Pending,
 		To:        status,
 	})
-}
-
-func (p paymentService) isValidStatusTransition(from, to model.PaymentStatus) bool {
-	switch from {
-	case model.Pending:
-		return to == model.Processing || to == model.Cancelled
-	case model.Processing:
-		return to == model.Succeeded || to == model.Failed
-	case model.Succeeded, model.Failed, model.Cancelled:
-		return false
-	default:
-		return false
+	if err != nil {
+		return nil, err
 	}
+
+	if status == model.Failed {
+		return payment, errors.New("payment failed: insufficient funds or wallet error")
+	}
+
+	return payment, nil
 }

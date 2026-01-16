@@ -7,16 +7,12 @@ import (
 	"github.com/google/uuid"
 
 	commonevent "payment/pkg/common/event"
-	"payment/pkg/payment/app/data"
 	"payment/pkg/payment/domain/model"
-	"payment/pkg/payment/domain/service"
+	domainservice "payment/pkg/payment/domain/service"
 )
 
 type PaymentService interface {
-	CreatePayment(ctx context.Context, orderID uuid.UUID, amount float64) (uuid.UUID, error)
-	RemovePayment(ctx context.Context, paymentID uuid.UUID) error
-	SetPaymentStatus(ctx context.Context, paymentID uuid.UUID, status int) error
-	FindPayment(ctx context.Context, paymentID uuid.UUID) (data.Payment, error)
+	Pay(ctx context.Context, orderID, customerID uuid.UUID, amount float64) error
 }
 
 func NewPaymentService(
@@ -37,55 +33,30 @@ type paymentService struct {
 	eventDispatcher outbox.EventDispatcher[outbox.Event]
 }
 
-func (s *paymentService) CreatePayment(ctx context.Context, orderID uuid.UUID, amount float64) (uuid.UUID, error) {
-	var paymentID uuid.UUID
-
+func (s *paymentService) Pay(ctx context.Context, orderID, customerID uuid.UUID, amount float64) error {
+	// Лочим по OrderID, чтобы предотвратить дублирующую оплату одного заказа
 	err := s.luow.Execute(ctx, []string{paymentLockByOrder(orderID)}, func(provider RepositoryProvider) error {
-		domainService := s.paymentDomainService(ctx, provider.PaymentRepository(ctx))
-		id, err := domainService.CreatePayment(orderID, amount)
-		if err != nil {
-			return err
-		}
-		paymentID = id
-		return nil
+		// Нам нужны репозитории и кошелька, и платежей
+		paymentRepo := provider.PaymentRepository(ctx)
+		walletRepo := provider.WalletRepository(ctx)
+
+		domainSvc := s.domainService(ctx, paymentRepo, walletRepo)
+		_, err := domainSvc.PerformPayment(orderID, customerID, amount)
+		return err
 	})
 
-	return paymentID, err
+	return err
 }
 
-func (s *paymentService) RemovePayment(ctx context.Context, paymentID uuid.UUID) error {
-	return s.luow.Execute(ctx, []string{paymentLock(paymentID)}, func(provider RepositoryProvider) error {
-		return s.paymentDomainService(ctx, provider.PaymentRepository(ctx)).RemovePayment(paymentID)
-	})
-}
+func (s *paymentService) domainService(
+	ctx context.Context,
+	paymentRepo model.PaymentRepository,
+	walletRepo model.WalletRepository,
+) domainservice.PaymentService {
+	dispatcher := s.domainEventDispatcher(ctx)
 
-func (s *paymentService) SetPaymentStatus(ctx context.Context, paymentID uuid.UUID, status int) error {
-	return s.luow.Execute(ctx, []string{paymentLock(paymentID)}, func(provider RepositoryProvider) error {
-		return s.paymentDomainService(ctx, provider.PaymentRepository(ctx)).SetStatus(paymentID, model.PaymentStatus(status))
-	})
-}
-
-func (s *paymentService) FindPayment(ctx context.Context, paymentID uuid.UUID) (data.Payment, error) {
-	var payment data.Payment
-	err := s.luow.Execute(ctx, []string{paymentLock(paymentID)}, func(provider RepositoryProvider) error {
-		domainPayment, err := provider.PaymentRepository(ctx).Find(paymentID)
-		if err != nil {
-			return err
-		}
-		payment = data.Payment{
-			ID:       domainPayment.ID,
-			WalletID: domainPayment.WalletID,
-			OrderID:  domainPayment.OrderID,
-			Amount:   domainPayment.Amount,
-			Status:   data.PaymentStatus(domainPayment.Status),
-		}
-		return nil
-	})
-	return payment, err
-}
-
-func (s *paymentService) paymentDomainService(ctx context.Context, repository model.PaymentRepository) service.Payment {
-	return service.NewPaymentService(repository, s.domainEventDispatcher(ctx))
+	walletDomainSvc := domainservice.NewWalletService(walletRepo, dispatcher)
+	return domainservice.NewPaymentService(paymentRepo, walletDomainSvc, dispatcher)
 }
 
 func (s *paymentService) domainEventDispatcher(ctx context.Context) commonevent.Dispatcher {
@@ -96,10 +67,6 @@ func (s *paymentService) domainEventDispatcher(ctx context.Context) commonevent.
 }
 
 const basePaymentLock = "payment_"
-
-func paymentLock(id uuid.UUID) string {
-	return basePaymentLock + id.String()
-}
 
 func paymentLockByOrder(orderID uuid.UUID) string {
 	return basePaymentLock + "order_" + orderID.String()

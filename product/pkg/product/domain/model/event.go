@@ -3,9 +3,10 @@ package model
 import "github.com/google/uuid"
 
 type ProductCreated struct {
-	ProductID uuid.UUID
-	Name      string
-	Price     float64
+	ProductID uuid.UUID `json:"product_id"`
+	Name      string    `json:"name"`
+	Price     float64   `json:"price"`
+	Stock     int       `json:"stock"`
 }
 
 func (e ProductCreated) Type() string {
@@ -13,7 +14,10 @@ func (e ProductCreated) Type() string {
 }
 
 type ProductUpdated struct {
-	ProductID uuid.UUID
+	ProductID uuid.UUID `json:"product_id"`
+	Name      string    `json:"name"`
+	Price     float64   `json:"price"`
+	Stock     int       `json:"stock"`
 }
 
 func (e ProductUpdated) Type() string {
@@ -21,7 +25,7 @@ func (e ProductUpdated) Type() string {
 }
 
 type ProductRemoved struct {
-	ProductID uuid.UUID
+	ProductID uuid.UUID `json:"product_id"`
 }
 
 func (e ProductRemoved) Type() string {

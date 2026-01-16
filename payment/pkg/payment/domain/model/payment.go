@@ -7,7 +7,10 @@ import (
 	"github.com/google/uuid"
 )
 
-var ErrPaymentNotFound = errors.New("payment not found")
+var (
+	ErrPaymentNotFound      = errors.New("payment not found")
+	ErrInvalidPaymentStatus = errors.New("invalid payment status transition")
+)
 
 type PaymentStatus int
 
@@ -21,7 +24,7 @@ const (
 
 type Payment struct {
 	ID        uuid.UUID
-	WalletID  uuid.UUID
+	WalletID  uuid.UUID // ID кошелька, с которого платили
 	OrderID   uuid.UUID
 	Amount    float64
 	Status    PaymentStatus

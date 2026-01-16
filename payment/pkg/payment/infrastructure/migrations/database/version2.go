@@ -28,7 +28,7 @@ func (v version2) Description() string {
 
 func (v version2) Up(ctx context.Context) error {
 	_, err := v.client.ExecContext(ctx, `
-		CREATE TABLE payment
+		CREATE TABLE IF NOT EXISTS payment
 		(
 		    payment_id VARCHAR(64)  NOT NULL,
 		    wallet_id  VARCHAR(64)  NOT NULL,

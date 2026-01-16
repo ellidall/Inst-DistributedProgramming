@@ -7,13 +7,16 @@ import (
 	"github.com/google/uuid"
 )
 
-var ErrOrderNotFound = errors.New("order not found")
+var (
+	ErrOrderNotFound      = errors.New("order not found")
+	ErrInvalidOrderStatus = errors.New("invalid order status transition")
+	ErrEmptyOrderItems    = errors.New("order must have at least one item")
+)
 
 type OrderStatus int
 
 const (
-	Open OrderStatus = iota
-	Pending
+	Pending OrderStatus = iota
 	Paid
 	Cancelled
 )
@@ -29,15 +32,21 @@ type Order struct {
 }
 
 type OrderItem struct {
-	OrderID    uuid.UUID
-	ProductID  uuid.UUID
-	Count      int
-	TotalPrice float64
+	OrderID   uuid.UUID
+	ProductID uuid.UUID
+	Count     int
+	Price     float64
+}
+
+func (o *Order) CalculateTotal() float64 {
+	var total float64
+	for _, item := range o.Items {
+		total += item.Price * float64(item.Count)
+	}
+	return total
 }
 
 type OrderRepository interface {
-	NextID() (uuid.UUID, error)
 	Store(order *Order) error
 	Find(id uuid.UUID) (*Order, error)
-	Remove(id uuid.UUID) error
 }

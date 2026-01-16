@@ -1,13 +1,13 @@
 services:
   order:
     container_name: order
+    ports:
+      - "8084:8081"
     build:
       context: .
       dockerfile: Dockerfile
     command:
       - service
-    ports:
-      - "8084:8081"
     environment:
       ORDER_DATABASE_HOST: order-db
       ORDER_DATABASE_NAME: order_db
@@ -16,6 +16,8 @@ services:
     depends_on:
       order-db:
         condition: service_healthy
+    networks:
+      - common-net
 
   order-workflow-worker:
     container_name: order-workflow-worker
@@ -30,10 +32,12 @@ services:
       ORDER_DATABASE_USER: order
       ORDER_DATABASE_PASSWORD: 12345Q
 
-      ORDER_TEMPORAL_HOST: order-temporal:7233
+      ORDER_TEMPORAL_HOST: temporal:7233
     depends_on:
       order-db:
         condition: service_healthy
+    networks:
+      - common-net
 
   order-message-handler:
     container_name: order-message-handler
@@ -52,12 +56,12 @@ services:
       ORDER_AMQP_USER: guest
       ORDER_AMQP_PASSWORD: guest
 
-      ORDER_TEMPORAL_HOST: order-temporal:7233
+      ORDER_TEMPORAL_HOST: temporal:7233
     depends_on:
       order-db:
         condition: service_healthy
-      order-rmq:
-        condition: service_healthy
+    networks:
+      - common-net
 
   order-db:
     image: "mysql:8.3"
@@ -76,62 +80,12 @@ services:
       test: mysql -h127.0.0.1 -uroot -e 'SELECT 1'
       interval: 10s
       timeout: 30s
-
-  order-rmq:
-    image: "rabbitmq:4.2.0-management-alpine"
-    container_name: order-rmq
-    hostname: order-rmq
-    ports:
-      - "15676:15672"
-    volumes:
-      - "order-rmq-data:/var/lib/rabbitmq/mnesia"
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 1s
-      timeout: 3s
-      retries: 30
-
-  order-temporal:
-    container_name: order-temporal
-    depends_on:
-      order-db:
-        condition: service_healthy
-    environment:
-      - DB=mysql8
-      - DB_PORT=3306
-      - MYSQL_USER=root
-      - MYSQL_SEEDS=order-db
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-      - TEMPORAL_ADDRESS=order-temporal:7233
-      - TEMPORAL_CLI_ADDRESS=order-temporal:7233
-    image: temporalio/auto-setup:1.29.1
-    ports:
-      - "7236:7233"
-    volumes:
-      - ./docker/data/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
-
-  order-temporal-admin-tools:
-    container_name: order-temporal-admin-tools
-    depends_on:
-      - order-temporal
-    environment:
-      - TEMPORAL_ADDRESS=order-temporal:7233
-      - TEMPORAL_CLI_ADDRESS=order-temporal:7233
-    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
-    stdin_open: true
-    tty: true
-
-  order-temporal-ui:
-    container_name: order-temporal-ui
-    depends_on:
-      - order-temporal
-    environment:
-      - TEMPORAL_ADDRESS=order-temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
-    image: temporalio/ui:2.34.0
-    ports:
-      - "8094:8080"
+    networks:
+      - common-net
 
 volumes:
   order-db-data:
-  order-rmq-data:
+
+networks:
+  common-net:
+    external: true

@@ -30,10 +30,10 @@ func main() {
 	//log.Printf("Создан пользователь 1: %s", resp1.GetUserID())
 
 	//// Пользователь 2: все поля
-	email := "user-8@example.com"
-	telegram := "@user-8"
+	email := "user-1@example.com"
+	telegram := "@user-1"
 	resp2, err := client.CreateUser(ctx, &pb.CreateUserRequest{
-		Login:    "user-8",
+		Login:    "user-1",
 		Email:    &email,
 		Telegram: &telegram,
 	})

@@ -45,7 +45,7 @@ done
 log "Temporal is ready"
 
 # Запускаем микросервисы
-SERVICES="user payment notification"
+SERVICES="user payment notification order product"
 
 for svc in $SERVICES; do
     log "=== Starting service: $svc ==="

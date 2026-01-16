@@ -31,66 +31,55 @@ type orderInternalAPI struct {
 	orderinternalapi.UnimplementedOrderInternalAPIServer
 }
 
-func (o orderInternalAPI) StoreOrder(ctx context.Context, request *orderinternalapi.StoreOrderRequest) (*orderinternalapi.StoreOrderResponse, error) {
-	var (
-		orderID uuid.UUID
-		err     error
-	)
-	if request.OrderID != "" {
-		orderID, err = uuid.Parse(request.OrderID)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid uuid %q", request.OrderID)
-		}
-	}
-
+func (o *orderInternalAPI) CreateOrder(ctx context.Context, request *orderinternalapi.CreateOrderRequest) (*orderinternalapi.CreateOrderResponse, error) {
+	// 1. Валидация CustomerID
 	customerID, err := uuid.Parse(request.CustomerID)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid uuid %q", request.CustomerID)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid customer uuid %q", request.CustomerID)
 	}
 
+	// 2. Маппинг Items из Proto в AppData
 	items := make([]appdata.OrderItem, len(request.Items))
 	for i, item := range request.Items {
-		orderItemID, err := uuid.Parse(item.OrderID)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid uuid %q", item.OrderID)
-		}
 		productID, err := uuid.Parse(item.ProductID)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid uuid %q", item.ProductID)
+			return nil, status.Errorf(codes.InvalidArgument, "invalid product uuid %q", item.ProductID)
 		}
+
+		if item.Count <= 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "count must be positive for product %q", item.ProductID)
+		}
+
 		items[i] = appdata.OrderItem{
-			OrderID:    orderItemID,
 			ProductID:  productID,
 			Count:      int(item.Count),
-			TotalPrice: item.TotalPrice,
+			TotalPrice: 0, // Цену установит сага позже
 		}
 	}
 
-	orderID, err = o.orderService.StoreOrder(ctx, appdata.Order{
-		ID:         orderID,
-		CustomerID: customerID,
-		Status:     appdata.OrderStatus(request.Status),
-		Items:      items,
-	})
+	// 3. Вызов AppService
+	orderID, err := o.orderService.CreateOrder(ctx, customerID, items)
 	if err != nil {
-		return nil, err
+		// Здесь можно мапить ошибки домена на GRPC коды (например, если товаров нет)
+		return nil, status.Errorf(codes.Internal, "failed to create order: %v", err)
 	}
 
-	return &orderinternalapi.StoreOrderResponse{
+	return &orderinternalapi.CreateOrderResponse{
 		OrderID: orderID.String(),
 	}, nil
 }
 
-func (o orderInternalAPI) FindOrder(ctx context.Context, request *orderinternalapi.FindOrderRequest) (*orderinternalapi.FindOrderResponse, error) {
+func (o *orderInternalAPI) FindOrder(ctx context.Context, request *orderinternalapi.FindOrderRequest) (*orderinternalapi.FindOrderResponse, error) {
 	orderID, err := uuid.Parse(request.OrderID)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid uuid %q", request.OrderID)
 	}
-	order, err := o.orderQueryService.FindUser(ctx, orderID)
+
+	order, err := o.orderQueryService.FindUser(ctx, orderID) // Предполагаю, метод называется FindOrder или FindUser
 	if err != nil {
 		return nil, err
 	}
-	if order == nil {
+	if order.ID == uuid.Nil { // Проверка на пустую структуру, если Find не возвращает явный nil
 		return nil, status.Errorf(codes.NotFound, "order %q not found", request.OrderID)
 	}
 
@@ -105,7 +94,7 @@ func (o orderInternalAPI) FindOrder(ctx context.Context, request *orderinternala
 	}
 
 	response := &orderinternalapi.FindOrderResponse{
-		OrderID:    orderID.String(),
+		OrderID:    order.ID.String(),
 		Status:     orderinternalapi.OrderStatus(order.Status), // nolint:gosec
 		CustomerID: order.CustomerID.String(),
 		Items:      items,

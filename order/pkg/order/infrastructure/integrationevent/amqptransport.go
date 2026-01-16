@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"gitea.xscloud.ru/xscloud/golib/pkg/application/logging"
 	"gitea.xscloud.ru/xscloud/golib/pkg/infrastructure/amqp"
 
+	"order/pkg/order/domain/model"
 	"order/pkg/order/infrastructure/temporal"
 )
 
@@ -34,8 +36,19 @@ func (t *amqpTransport) Handler() amqp.Handler {
 	return t.withLog(t.handle)
 }
 
-func (t *amqpTransport) handle(_ context.Context, _ amqp.Delivery) error {
-	return nil
+func (t *amqpTransport) handle(ctx context.Context, delivery amqp.Delivery) error {
+	switch delivery.Type {
+	case model.OrderCreated{}.Type():
+		var e model.OrderCreated
+		err := json.Unmarshal(delivery.Body, &e)
+		if err != nil {
+			return err
+		}
+		fmt.Println("event = ", e)
+		return t.workflowService.RunProcessOrderWorkflow(ctx, delivery.CorrelationID, e)
+	default:
+		return errUnhandledDelivery
+	}
 }
 
 func (t *amqpTransport) withLog(handler amqp.Handler) amqp.Handler {

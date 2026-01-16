@@ -67,6 +67,7 @@ func workflowWorker(logger logging.Logger) *cli.Command {
 				w := worker.NewWorker(
 					temporalClient,
 					appservice.NewWalletService(uow, luow, eventDispatcher),
+					appservice.NewPaymentService(uow, luow, eventDispatcher),
 				)
 				logger.Info("Worker created, starting...")
 				err := w.Run(worker.InterruptChannel())

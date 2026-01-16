@@ -1,3 +1,4 @@
+version: "2"
 run:
   timeout: 5m
   issues-exit-code: 1
@@ -5,11 +6,9 @@ run:
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
     - bodyclose
     - importas
@@ -19,14 +18,11 @@ linters:
     - gocognit
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
     - revive
     - gosec
     - misspell
     - nakedret
     - prealloc
-    - stylecheck
     - unconvert
     - whitespace
     - rowserrcheck
@@ -34,16 +30,30 @@ linters:
     - asciicheck
     - nestif
     - sqlclosecheck
+  settings:
+    govet:
+      disable:
+        - shadow
+    gocritic:
+      disabled-checks:
+        - sloppyReassign
+        - whyNoLint
+      enabled-tags:
+        - experimental
+        - opinionated
+  exclusions:
+    rules:
+      - linters:
+          - revive
+        text: "exported:.*"
+      - linters:
+          - revive
+        text: "package-comments:.*"
 
-linters-settings:
-  govet:
-    check-shadowing: true
-  goimports:
-    local-prefixes: bff
-  gocritic:
-    disabled-checks:
-      - sloppyReassign
-      - whyNoLint
-    enabled-tags:
-      - experimental
-      - opinionated
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: product
